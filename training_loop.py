@@ -52,8 +52,16 @@ def training_loop(num_epochs):
     eval_dataloader = DataLoader(small_eval_dataset, batch_size=8)
 
     # setup model and optimizer
-    model = AutoModelForSequenceClassification.from_pretrained("bert-base-cased", num_labels=5)
     optimizer = AdamW(model.parameters(), lr=5e-5)
+    
+    for param in model.parameters():
+        param.requires_grad = False  # freeze the model - train adapters later
+        if param.ndim == 1:
+            # cast the small parameters (e.g. layernorm) to fp32 for stability
+            param.data = param.data.to(torch.float32)
+
+    model.gradient_checkpointing_enable()  # reduce number of stored activations
+    model.enable_input_require_grads()
 
     num_training_steps = num_epochs * len(train_dataloader)
     lr_scheduler = get_scheduler(
