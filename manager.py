@@ -19,6 +19,7 @@ Example:
 """
 
 import argparse
+import os
 import pathlib
 
 import training_loop
@@ -40,19 +41,42 @@ def create_args() -> argparse.Namespace:
         help="Time limit for training in minutes will save at end of limit",
     )
     parser.add_argument(
-        "--checkpoint_load", type=str, default=None, help="Checkpoint to load"
+        "--checkpoint_dir", type=str, default='opt-finetuned-icd9', help="Checkpoint directory to save in"
     )
     parser.add_argument(
-        "--checkpoint_save", type=str, default=None, help="Checkpoint to save"
+        "--train_dataset", type=str, default="data/train_9.csv", help="The training dataset"
+    )
+
+    parser.add_argument(
+        "--val_dataset", type=str, default="data/val_9.csv", help="The evaluation dataset"
+    )
+
+    parser.add_argument(
+        "--test_dataset", type=str, default="data/test_9.csv", help="The test dataset"
+    )
+
+    parser.add_argument(
+        "--code_labels", type=str, default="data/icd9_codes.csv", help="The training dataset code labels"
+    )
+
+    parser.add_argument(
+        "--save_interval", type=int, default=1000, help="Save interval in steps for checkpoints."
+    )
+    
+    # Wandb api key (optional skip wandb usage if not provided)
+    parser.add_argument(
+        "--wandb_key", type=str, default=None help="Wandb API key"
+    )
+
+    parser.add_arugment(
+        "--run_name", type=str, default="run", help="Name of the run"
+    )
+
+    parser.add_arugment(
+        "--project_name", type=str, default="OPT-Finetuning ICD9", help="Name of the run for Wandb"
     )
     parser.add_argument(
-        "--checkpoint_save_freq",
-        type=int,
-        default=10,
-        help="Frequency to save the checkpoint in epochs.",
-    )
-    parser.add_argument(
-        "--dataset_path", type=str, default="data/", help="Path to dataset"
+        "--fresh_start", action="store_true", help="Start fresh without loading checkpoint"
     )
 
     return parser.parse_args()
@@ -64,6 +88,8 @@ def main():
     """
     args = create_args()
     if args.task == "train":
+        os.environ["WANDB_PROJECT"]=args.project_name
+        os.environ["WANDB_API_KEY"]=args.wandb_key
         training_loop.train(args)
     else:
         raise ValueError("Task not recognized")
