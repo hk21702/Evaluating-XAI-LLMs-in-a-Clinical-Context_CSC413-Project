@@ -12,17 +12,28 @@ from transformers import TrainingArguments, Trainer
 import pandas as pd
 
 
-def training_loop(dataset, dataset_codes, icd_code, num_epochs=50, batch_size = 8):
+def training_loop(dataset, dataset_codes, icd_code, num_epochs=1, batch_size = 1):
+    mimic_dataset = pd.read_csv(dataset)
     tokenizer = AutoTokenizer.from_pretrained("facebook/opt-6.7b")
-    dataset = MimicDataset(dataset, dataset_codes, tokenizer)
+        
+    # tokenize the dataset
+    tokenized_dataset = mimic_dataset.apply(lambda x: tokenizer.encode_plus(x['text'], add_special_tokens=True, padding='max_length', truncation=True, max_length=512, return_tensors='pt'), axis=1)
+    print(tokenized_dataset[0])
+    
+    # extract the labels column
+    labels = mimic_dataset["icd_proc"]
+    
+    dataset = MimicDataset(tokenized_dataset, labels, dataset_codes)
+    
+    # print(tokenized_dataset.items())
+    # print(dataset[0])
     
     # split in to training and validation datasets
     train_size = int(0.8 * len(dataset))
     val_size = len(dataset) - train_size
     train_dataset, val_dataset = torch.utils.data.random_split(dataset, [train_size, val_size])
-   
     
-    
+    # create data loaders
     icd_labels = pd.read_csv(dataset_codes)
     
     # print(dataset[0])
@@ -31,7 +42,7 @@ def training_loop(dataset, dataset_codes, icd_code, num_epochs=50, batch_size = 
     # get number of icd codes from length of the dataset_label file
     code_count = len(icd_labels)
 
-    model = OPTForSequenceClassification.from_pretrained("ArthurZ/opt-350m-dummy-sc", num_labels=code_count, problem_type="multi_label_classification")
+    model = OPTForSequenceClassification.from_pretrained("facebook/opt-350m", num_labels=code_count, problem_type="multi_label_classification")
     
     # metrics are incorrect right now, i will add a custom metric for multi-label classification
     metric_name = "f1"
@@ -75,7 +86,7 @@ def training_loop(dataset, dataset_codes, icd_code, num_epochs=50, batch_size = 
     learning_rate=2e-5,
     per_device_train_batch_size=batch_size,
     per_device_eval_batch_size=batch_size,
-    num_train_epochs=5,
+    num_train_epochs=num_epochs,
     weight_decay=0.01,
     load_best_model_at_end=True,
     metric_for_best_model=metric_name)
