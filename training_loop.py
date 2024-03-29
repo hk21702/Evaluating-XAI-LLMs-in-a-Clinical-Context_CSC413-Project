@@ -15,15 +15,18 @@ import pandas as pd
 def training_loop(dataset, dataset_codes, icd_code, num_epochs=50, batch_size = 8):
     tokenizer = AutoTokenizer.from_pretrained("facebook/opt-6.7b")
     dataset = MimicDataset(dataset, dataset_codes, tokenizer)
-    # tokenized_datasets = tokenize_dataset(dataset)
+    
+    # split in to training and validation datasets
+    train_size = int(0.8 * len(dataset))
+    val_size = len(dataset) - train_size
+    train_dataset, val_dataset = torch.utils.data.random_split(dataset, [train_size, val_size])
    
-    print(dataset[0])
-    # print(tokenized_datasets)
-    # print(tokenized_datasets["train"][0])
+    
     
     icd_labels = pd.read_csv(dataset_codes)
     
-    print(icd_labels)
+    # print(dataset[0])
+    # print(icd_labels)
     
     # get number of icd codes from length of the dataset_label file
     code_count = len(icd_labels)
@@ -80,8 +83,8 @@ def training_loop(dataset, dataset_codes, icd_code, num_epochs=50, batch_size = 
     trainer = Trainer(
         model=model,
         args=training_args,
-        train_dataset=small_train_dataset,
-        eval_dataset=small_eval_dataset,
+        train_dataset=train_dataset,
+        eval_dataset=val_dataset,
         compute_metrics=compute_metrics,
     )
 
