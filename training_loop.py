@@ -12,46 +12,27 @@ from transformers import TrainingArguments, Trainer
 import pandas as pd
 
 
-def tokenize_dataset(dataset):
+def training_loop(dataset, dataset_codes, icd_code, num_epochs=50, batch_size = 8):
     tokenizer = AutoTokenizer.from_pretrained("facebook/opt-6.7b")
+    dataset = MimicDataset(dataset, dataset_codes, tokenizer)
+    # tokenized_datasets = tokenize_dataset(dataset)
+   
+    print(dataset[0])
+    # print(tokenized_datasets)
+    # print(tokenized_datasets["train"][0])
     
-    def tokenize_function(dataset):
-        return tokenizer(dataset["text"], padding="max_length", truncation=True)
-
-    tokenized_datasets = dataset.map(tokenize_function, batched=True)
-    return tokenized_datasets
-
-
-def calculate_accuracy(predictions, labels):
-    return np.mean(predictions == labels)
-
-
-def training_loop(dataset_code, dataset_label, icd_code, num_epochs=50, batch_size = 8):
-    dataset = MimicDataset(dataset_code, dataset_label)
-    tokenized_datasets = tokenize_dataset(dataset)
-    icd_labels = pd.read_csv(dataset_label)
+    icd_labels = pd.read_csv(dataset_codes)
+    
+    print(icd_labels)
     
     # get number of icd codes from length of the dataset_label file
     code_count = len(icd_labels)
-
-    # for testing
-    small_train_dataset = tokenized_datasets["train"].shuffle(seed=42).select(range(1000))
-    small_eval_dataset = tokenized_datasets["test"].shuffle(seed=42).select(range(1000))
 
     model = OPTForSequenceClassification.from_pretrained("ArthurZ/opt-350m-dummy-sc", num_labels=code_count, problem_type="multi_label_classification")
     
     # metrics are incorrect right now, i will add a custom metric for multi-label classification
     metric_name = "f1"
-
-    def compute_metrics(eval_pred):
-        logits, labels = eval_pred
-        predictions = np.argmax(logits, axis=-1)
-        return metric.compute(predictions=predictions, references=labels)
     
-
-    small_train_dataset = tokenized_datasets["train"].shuffle(seed=42).select(range(1000))
-    small_eval_dataset = tokenized_datasets["test"].shuffle(seed=42).select(range(1000))
-
     # send the model to the gpu if available
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     model.to(device)
@@ -110,5 +91,6 @@ def training_loop(dataset_code, dataset_label, icd_code, num_epochs=50, batch_si
 if __name__ == "__main__":
     icd_code = "icd10"
     dataset_codes = f"data/{icd_code}_codes.csv"
-    dataset_labels = f"data/mimic-iv-{icd_code}.csv"
-    training_loop(dataset_codes, dataset_labels, icd_code)
+    dataset = f"data/mimic-iv-{icd_code}-small.csv"
+    #dataset_labels = f"data/mimic-iv-{icd_code}.csv"
+    training_loop(dataset, dataset_codes, icd_code)
