@@ -1,4 +1,3 @@
-# code partially based on https://github.com/abhimishra91/transformers-tutorials/blob/master/transformers_multi_label_classification.ipynb
 import torch
 import pandas as pd
 from torch.utils.data import Dataset
@@ -16,7 +15,7 @@ class MimicDataset(Dataset):
         
         # create a dictionary of icd codes and their corresponding index in the list
         self.labels = labels
-        self.icd_labels = pd.read_csv(csv_file_labels)
+        self.icd_labels = csv_file_labels
         self.icd_labels = self.icd_labels["icd_code"].tolist()
         self.icd_labels_dict = {self.icd_labels[i]: i for i in range(len(self.icd_labels))}
         

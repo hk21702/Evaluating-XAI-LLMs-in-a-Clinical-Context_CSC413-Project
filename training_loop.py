@@ -22,33 +22,75 @@ from MIMICDataset import MimicDataset
 
 
 def train(args: argparse.Namespace):
+    # for some reason the trainer has issues passing parameters to the model_init function so this variable needs to be global
+    global num_labels
     # Start timer
     train_dataset = pd.read_csv(args.train_dataset)
     val_dataset = pd.read_csv(args.val_dataset)
     test_dataset = pd.read_csv(args.test_dataset)
     code_labels = pd.read_csv(args.code_labels)
     tokenizer = AutoTokenizer.from_pretrained("facebook/opt-6.7b", use_fast=True)
+    
+    torch.cuda.set_device(0)
+    torch.cuda.current_device()
+    
+    # tokenize the datasets
+    tokenized_train_dataset = train_dataset.apply(
+        lambda x: tokenizer.encode_plus(
+            x["text"],
+            add_special_tokens=True,
+            padding="max_length",
+            truncation=True,
+            max_length=512,
+            return_tensors="pt",
+        ),
+        axis=1,
+    )
+    tokenized_val_dataset = val_dataset.apply(
+        lambda x: tokenizer.encode_plus(
+            x["text"],
+            add_special_tokens=True,
+            padding="max_length",
+            truncation=True,
+            max_length=512,
+            return_tensors="pt",
+        ),
+        axis=1,
+    )
+    tokenized_test_dataset = test_dataset.apply(
+        lambda x: tokenizer.encode_plus(
+            x["text"],
+            add_special_tokens=True,
+            padding="max_length",
+            truncation=True,
+            max_length=512,
+            return_tensors="pt",
+        ),
+        axis=1,
+    )
+    
+    train_dataset = MimicDataset(tokenized_train_dataset, train_dataset["label"], code_labels)
+    val_dataset = MimicDataset(tokenized_val_dataset, val_dataset["label"], code_labels)
 
-    num_labels = len(code_labels)
-
-    # extract the labels column
-    labels = tokenized_dataset["label"]
-
-    train_dataset = MimicDataset(train_dataset, train_dataset["label"], dataset_codes)
-
+    # make sure to update num_train_epochs for actual training
+    # note - save stratedy and evaluation strategy need to match
+    # change batch sizes back to 8 for testing
     training_args = TrainingArguments(
-        args.checkpoint_dir,
+        output_dir = args.checkpoint_dir,
         evaluation_strategy="epoch",
-        save_strategy="steps",
+        save_strategy="epoch",
         save_steps=args.save_interval,
         learning_rate=2e-5,
         per_device_train_batch_size=8,
         per_device_eval_batch_size=8,
-        num_train_epochs=1,
+        num_train_epochs=10,
         weight_decay=0.01,
         load_best_model_at_end=True,
         metric_for_best_model="f1",
     )
+    
+    num_labels = len(code_labels)
+    # print("num_labels:", num_labels)
 
     if args.wandb_key:
         wandb.login(key=args.wandb_key)
@@ -58,7 +100,7 @@ def train(args: argparse.Namespace):
         hyperparameter_search(
             model_init,
             num_labels,
-            args,
+            training_args,
             train_dataset,
             val_dataset,
             tokenizer,
@@ -68,9 +110,10 @@ def train(args: argparse.Namespace):
 
     else:
         # Load model from local checkpoint
-        # model = OPTForSequenceClassification.from_pretrained(args.checkpoint_load)
+        model = OPTForSequenceClassification.from_pretrained(args.checkpoint_dir)
 
         trainer = Trainer(
+            model=model,
             args=training_args,
             train_dataset=train_dataset,
             eval_dataset=val_dataset,
@@ -80,7 +123,7 @@ def train(args: argparse.Namespace):
         trainer.train(resume_from_checkpoint=True)
 
 
-def model_init(num_labels):
+def model_init():
     """Model init for use for hyperparameter_search"""
     return OPTForSequenceClassification.from_pretrained(
         "facebook/opt-350m",
@@ -90,7 +133,7 @@ def model_init(num_labels):
 
 
 def hyperparameter_search(
-    model_init: function,
+    model_init,
     num_labels: int,
     args,
     train_dataset,
@@ -117,15 +160,15 @@ def hyperparameter_search(
 
     """
     trainer = Trainer(
-        model_init=model_init(num_labels),
+        model_init=model_init,
         args=args,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
         tokenizer=tokenizer,
         compute_metrics=compute_metrics,
     )
-
-    best_run = trainer.hyperparameter_search(n_trials=n_trials, direction="maximize")
+    
+    best_run = trainer.train()
     return best_run
 
     # source: https://jesusleal.io/2021/04/21/Longformer-multilabel-classification/
@@ -154,6 +197,7 @@ def compute_metrics(p: EvalPrediction):
     return result
 
 
+# leaving this code here for now but we should remove it before final submission
 def training_loop(
     model,
     dataset: pd.DataFrame,
@@ -162,9 +206,6 @@ def training_loop(
     training_args: TrainingArguments,
     trainer: Trainer,
 ):
-
-
-
     # split in to training and validation datasets
     train_size = int(0.8 * len(dataset))
     val_size = len(dataset) - train_size
@@ -173,7 +214,7 @@ def training_loop(
     )
 
     # send the model to the gpu if available
-    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    device = torch.cuda_set_device(1) if torch.cuda.is_available() else torch.device("cpu")
     model.to(device)
 
     training_args = TrainingArguments(output_dir="test_trainer")
