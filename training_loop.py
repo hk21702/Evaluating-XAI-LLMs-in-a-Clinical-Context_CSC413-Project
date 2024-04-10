@@ -1,8 +1,7 @@
 # please note that is code is based on https://huggingface.co/docs/transformers/en/training
 import argparse
-import time
+from pprint import pprint
 
-import evaluate
 import numpy as np
 import pandas as pd
 import torch
@@ -30,53 +29,59 @@ def train(args: argparse.Namespace):
     test_dataset = pd.read_csv(args.test_dataset)
     code_labels = pd.read_csv(args.code_labels)
     tokenizer = AutoTokenizer.from_pretrained("facebook/opt-6.7b", use_fast=True)
-    
+
     torch.cuda.set_device(0)
     torch.cuda.current_device()
-    
+    tqdm.pandas()
+
+    pprint("Starting training")
+    pprint("Tokenizing training dataset")
     # tokenize the datasets
-    tokenized_train_dataset = train_dataset.apply(
+    tokenized_train_dataset = train_dataset.progress_apply(
         lambda x: tokenizer.encode_plus(
             x["text"],
             add_special_tokens=True,
             padding="max_length",
             truncation=True,
-            max_length=512,
             return_tensors="pt",
         ),
         axis=1,
     )
-    tokenized_val_dataset = val_dataset.apply(
+
+    pprint("Tokenizing validation dataset")
+    tokenized_val_dataset = val_dataset.progress_apply(
         lambda x: tokenizer.encode_plus(
             x["text"],
             add_special_tokens=True,
             padding="max_length",
             truncation=True,
-            max_length=512,
             return_tensors="pt",
         ),
         axis=1,
     )
-    tokenized_test_dataset = test_dataset.apply(
+
+    pprint("Tokenizing testing dataset")
+    tokenized_test_dataset = test_dataset.progress_apply(
         lambda x: tokenizer.encode_plus(
             x["text"],
             add_special_tokens=True,
             padding="max_length",
             truncation=True,
-            max_length=512,
             return_tensors="pt",
         ),
         axis=1,
     )
-    
-    train_dataset = MimicDataset(tokenized_train_dataset, train_dataset["label"], code_labels)
+
+    train_dataset = MimicDataset(
+        tokenized_train_dataset, train_dataset["label"], code_labels
+    )
     val_dataset = MimicDataset(tokenized_val_dataset, val_dataset["label"], code_labels)
 
     # make sure to update num_train_epochs for actual training
     # note - save stratedy and evaluation strategy need to match
     # change batch sizes back to 8 for testing
     training_args = TrainingArguments(
-        output_dir = args.checkpoint_dir,
+        output_dir=args.checkpoint_dir,
         evaluation_strategy="epoch",
         save_strategy="epoch",
         save_steps=args.save_interval,
@@ -88,18 +93,19 @@ def train(args: argparse.Namespace):
         load_best_model_at_end=True,
         metric_for_best_model="f1",
     )
-    
+
     num_labels = len(code_labels)
     # print("num_labels:", num_labels)
 
     if args.wandb_key:
+        pprint("Using wandb")
         wandb.login(key=args.wandb_key)
         training_args.report_to = "wandb"
 
     if args.fresh_start:
+        pprint("Fresh Start")
         hyperparameter_search(
             model_init,
-            num_labels,
             training_args,
             train_dataset,
             val_dataset,
@@ -111,6 +117,7 @@ def train(args: argparse.Namespace):
 
     else:
         # Load model from local checkpoint
+        pprint("Attempting to load local model checkpoint")
         model = OPTForSequenceClassification.from_pretrained(args.checkpoint_dir)
 
         trainer = Trainer(
@@ -122,7 +129,9 @@ def train(args: argparse.Namespace):
         )
 
         trainer.train(resume_from_checkpoint=True)
-        trainer.save_model(args.checkpoint_dir)
+
+    trainer.save_model(args.checkpoint_dir)
+    trainer.save_state()
 
 
 def model_init():
@@ -134,9 +143,36 @@ def model_init():
     )
 
 
+def wandb_hp_space(trial):
+    """
+    Returns a dictionary representing the hyperparameter space for Weights & Biases (wandb) optimization.
+
+    Args:
+        trial: An object representing the current optimization trial.
+
+    Returns:
+        A dictionary containing the hyperparameter space for wandb optimization. The dictionary has the following structure:
+        {
+            "method": "random",
+            "metric": {"name": "loss", "goal": "minimize"},
+            "parameters": {
+                "learning_rate": {"distribution": "uniform", "min": 1e-6, "max": 1e-4},
+                "per_device_train_batch_size": {"values": [16, 32, 64, 128]},
+            },
+        }
+    """
+    return {
+        "method": "random",
+        "metric": {"name": "loss", "goal": "minimize"},
+        "parameters": {
+            "learning_rate": {"distribution": "uniform", "min": 1e-6, "max": 1e-4},
+            "per_device_train_batch_size": {"values": [16, 32, 64, 128]},
+        },
+    }
+
+
 def hyperparameter_search(
     model_init,
-    num_labels: int,
     args,
     train_dataset,
     eval_dataset,
@@ -162,6 +198,8 @@ def hyperparameter_search(
         BestRun: The best run from the hyperparameter search.
 
     """
+    pprint(f"Doing hyperparameter search with {n_trials} trials")
+
     trainer = Trainer(
         model_init=model_init,
         args=args,
@@ -170,15 +208,16 @@ def hyperparameter_search(
         tokenizer=tokenizer,
         compute_metrics=compute_metrics,
     )
-    
-    best_run = trainer.train()
-    trainer.save_model(checkpoint_dir)
-    return best_run
 
-    # source: https://jesusleal.io/2021/04/21/Longformer-multilabel-classification/
+    best_run = trainer.hyperparameter_search(hp_space=wandb_hp_space,
+                                             n_trials=n_trials,
+                                             direction="minimize",
+                                             backend="wandb")
+    return best_run
 
 
 def multi_label_metrics(predictions, labels, threshold=0.5):
+    # source: https://jesusleal.io/2021/04/21/Longformer-multilabel-classification/
     # first, apply sigmoid on predictions which are of shape (batch_size, num_labels)
     sigmoid = torch.nn.Sigmoid()
     probs = sigmoid(torch.Tensor(predictions))
@@ -218,7 +257,9 @@ def training_loop(
     )
 
     # send the model to the gpu if available
-    device = torch.cuda_set_device(1) if torch.cuda.is_available() else torch.device("cpu")
+    device = (
+        torch.cuda_set_device(1) if torch.cuda.is_available() else torch.device("cpu")
+    )
     model.to(device)
 
     training_args = TrainingArguments(output_dir="test_trainer")

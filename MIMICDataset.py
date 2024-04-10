@@ -32,7 +32,6 @@ class MimicDataset(Dataset):
         # get the tokenized data
         item = self.tokenized_dataset[idx]
 
-        # using the icd_proc column, let me know if this is incorrect
         icd_codes = ast.literal_eval(self.labels[idx])
         
         # create the label tensor
