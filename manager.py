@@ -62,18 +62,19 @@ def create_args() -> argparse.Namespace:
     parser.add_argument(
         "--save_interval", type=int, default=1000, help="Save interval in steps for checkpoints."
     )
-    
+
     # Wandb api key (optional skip wandb usage if not provided)
     parser.add_argument(
-        "--wandb_key", type=str, default=None help="Wandb API key"
+        "--wandb_key", type=str, default=None, help="Wandb API key"
     )
 
-    parser.add_arugment(
-        "--run_name", type=str, default="run", help="Name of the run"
-    )
+    parser.add_argument("--run_name", type=str, default="run", help="Name of the run")
 
-    parser.add_arugment(
-        "--project_name", type=str, default="OPT-Finetuning ICD9", help="Name of the run for Wandb"
+    parser.add_argument(
+        "--project_name",
+        type=str,
+        default="OPT-Finetuning ICD9",
+        help="Name of the run for Wandb",
     )
     parser.add_argument(
         "--fresh_start", action="store_true", help="Start fresh without loading checkpoint"
