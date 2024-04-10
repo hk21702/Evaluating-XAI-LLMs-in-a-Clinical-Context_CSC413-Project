@@ -81,9 +81,9 @@ def train(args: argparse.Namespace):
         save_strategy="epoch",
         save_steps=args.save_interval,
         learning_rate=2e-5,
-        per_device_train_batch_size=8,
-        per_device_eval_batch_size=8,
-        num_train_epochs=10,
+        per_device_train_batch_size=1,
+        per_device_eval_batch_size=1,
+        num_train_epochs=1,
         weight_decay=0.01,
         load_best_model_at_end=True,
         metric_for_best_model="f1",
@@ -105,6 +105,7 @@ def train(args: argparse.Namespace):
             val_dataset,
             tokenizer,
             compute_metrics,
+            args.checkpoint_dir,
             n_trials=10,
         )
 
@@ -121,6 +122,7 @@ def train(args: argparse.Namespace):
         )
 
         trainer.train(resume_from_checkpoint=True)
+        trainer.save_model(args.checkpoint_dir)
 
 
 def model_init():
@@ -140,6 +142,7 @@ def hyperparameter_search(
     eval_dataset,
     tokenizer,
     compute_metrics,
+    checkpoint_dir: str,
     n_trials: int = 10,
 ):
     """
@@ -169,6 +172,7 @@ def hyperparameter_search(
     )
     
     best_run = trainer.train()
+    trainer.save_model(checkpoint_dir)
     return best_run
 
     # source: https://jesusleal.io/2021/04/21/Longformer-multilabel-classification/
