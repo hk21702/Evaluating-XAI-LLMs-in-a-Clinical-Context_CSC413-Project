@@ -4,3 +4,4 @@ physionet.org
 wget-log
 data
 __pycache__
+scratch.ipynb
