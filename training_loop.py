@@ -80,7 +80,6 @@ def train(args: argparse.Namespace):
             dataset,
             tokenizer,
             compute_metrics,
-            args.checkpoint_dir,
             n_trials=10,
         )
 
@@ -153,7 +152,6 @@ def hyperparameter_search(
     dataset,
     tokenizer,
     compute_metrics,
-    checkpoint_dir: str,
     n_trials: int = 10,
 ):
     """
@@ -217,7 +215,7 @@ def compute_metrics(p: EvalPrediction):
     return result
 
 
-# leaving this code here for now but we should remove it before final submission
+# TODO: leaving this code here for now but we should remove it before final submission
 def training_loop(
     model,
     dataset: pd.DataFrame,
