@@ -10,3 +10,5 @@ tqdm~=4.66.2
 transformers~=4.39.3
 wandb~=0.16.5
 scikit-learn ~=1.4.2
+accelerate
+datasets

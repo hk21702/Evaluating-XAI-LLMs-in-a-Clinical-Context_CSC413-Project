@@ -2,12 +2,13 @@
 import argparse
 from pprint import pprint
 
+import datasets
 import numpy as np
 import pandas as pd
 import torch
+import wandb
+from datasets import load_dataset
 from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
-from torch.utils.data import DataLoader
-from tqdm.auto import tqdm
 from transformers import (
     AutoTokenizer,
     EvalPrediction,
@@ -15,67 +16,36 @@ from transformers import (
     Trainer,
     TrainingArguments,
 )
-import wandb
-
-from MIMICDataset import MimicDataset
 
 
 def train(args: argparse.Namespace):
     # for some reason the trainer has issues passing parameters to the model_init function so this variable needs to be global
     global num_labels
-    # Start timer
-    train_dataset = pd.read_csv(args.train_dataset)
-    val_dataset = pd.read_csv(args.val_dataset)
-    test_dataset = pd.read_csv(args.test_dataset)
+    global tokenizer
+    datasets.logging.set_verbosity_info()
+
+    print("Loading datasets")
+    data_files = {
+        "train": args.train_path,
+        "validation": args.val_path,
+        "test": args.test_path,
+    }
+    # train_dataset = pd.read_csv(args.train_dataset)
+    # val_dataset = pd.read_csv(args.val_dataset)
+    # test_dataset = pd.read_csv(args.test_dataset)
     code_labels = pd.read_csv(args.code_labels)
+    dataset = load_dataset("csv", data_files=data_files, cache_dir=args.cache_dir)
+
+    print("Tokenizing datasets. Loading from cache if available.")
     tokenizer = AutoTokenizer.from_pretrained("facebook/opt-6.7b", use_fast=True)
 
     torch.cuda.set_device(0)
     torch.cuda.current_device()
-    tqdm.pandas()
 
-    pprint("Starting training")
-    pprint("Tokenizing training dataset")
-    # tokenize the datasets
-    tokenized_train_dataset = train_dataset.progress_apply(
-        lambda x: tokenizer.encode_plus(
-            x["text"],
-            add_special_tokens=True,
-            padding="max_length",
-            truncation=True,
-            return_tensors="pt",
-        ),
-        axis=1,
-    )
+    # Run dummy tokenization run first to circumvent bug with hashing changing
+    # tokenizer("Some", "test")
 
-    pprint("Tokenizing validation dataset")
-    tokenized_val_dataset = val_dataset.progress_apply(
-        lambda x: tokenizer.encode_plus(
-            x["text"],
-            add_special_tokens=True,
-            padding="max_length",
-            truncation=True,
-            return_tensors="pt",
-        ),
-        axis=1,
-    )
-
-    pprint("Tokenizing testing dataset")
-    tokenized_test_dataset = test_dataset.progress_apply(
-        lambda x: tokenizer.encode_plus(
-            x["text"],
-            add_special_tokens=True,
-            padding="max_length",
-            truncation=True,
-            return_tensors="pt",
-        ),
-        axis=1,
-    )
-
-    train_dataset = MimicDataset(
-        tokenized_train_dataset, train_dataset["label"], code_labels
-    )
-    val_dataset = MimicDataset(tokenized_val_dataset, val_dataset["label"], code_labels)
+    dataset = dataset.map(tokenize, batched=True, load_from_cache_file=True, num_proc=8)
 
     # make sure to update num_train_epochs for actual training
     # note - save stratedy and evaluation strategy need to match
@@ -95,7 +65,7 @@ def train(args: argparse.Namespace):
     )
 
     num_labels = len(code_labels)
-    # print("num_labels:", num_labels)
+    pprint(f"num_labels: {num_labels}")
 
     if args.wandb_key:
         pprint("Using wandb")
@@ -107,8 +77,7 @@ def train(args: argparse.Namespace):
         hyperparameter_search(
             model_init,
             training_args,
-            train_dataset,
-            val_dataset,
+            dataset,
             tokenizer,
             compute_metrics,
             args.checkpoint_dir,
@@ -123,8 +92,8 @@ def train(args: argparse.Namespace):
         trainer = Trainer(
             model=model,
             args=training_args,
-            train_dataset=train_dataset,
-            eval_dataset=val_dataset,
+            train_dataset=dataset["train"],
+            eval_dataset=dataset["validation"],
             tokenizer=tokenizer,
         )
 
@@ -132,6 +101,13 @@ def train(args: argparse.Namespace):
 
     trainer.save_model(args.checkpoint_dir)
     trainer.save_state()
+
+
+def tokenize(example):
+    return tokenizer(
+        example["text"],
+        add_special_tokens=True,
+    )
 
 
 def model_init():
@@ -174,8 +150,7 @@ def wandb_hp_space(trial):
 def hyperparameter_search(
     model_init,
     args,
-    train_dataset,
-    eval_dataset,
+    dataset,
     tokenizer,
     compute_metrics,
     checkpoint_dir: str,
@@ -203,16 +178,18 @@ def hyperparameter_search(
     trainer = Trainer(
         model_init=model_init,
         args=args,
-        train_dataset=train_dataset,
-        eval_dataset=eval_dataset,
+        train_dataset=dataset["train"],
+        eval_dataset=dataset["validation"],
         tokenizer=tokenizer,
         compute_metrics=compute_metrics,
     )
 
-    best_run = trainer.hyperparameter_search(hp_space=wandb_hp_space,
-                                             n_trials=n_trials,
-                                             direction="minimize",
-                                             backend="wandb")
+    best_run = trainer.hyperparameter_search(
+        hp_space=wandb_hp_space,
+        n_trials=n_trials,
+        direction="minimize",
+        backend="wandb",
+    )
     return best_run
 
 

@@ -44,15 +44,15 @@ def create_args() -> argparse.Namespace:
         "--checkpoint_dir", type=str, default='opt-finetuned-icd9', help="Checkpoint directory to save in"
     )
     parser.add_argument(
-        "--train_dataset", type=str, default="data/train_9.csv", help="The training dataset"
+        "--train_path", type=str, default="data/train_9.csv", help="The path to the training dataset"
     )
 
     parser.add_argument(
-        "--val_dataset", type=str, default="data/val_9.csv", help="The evaluation dataset"
+        "--val_path", type=str, default="data/val_9.csv", help="The path to the evaluation dataset"
     )
 
     parser.add_argument(
-        "--test_dataset", type=str, default="data/test_9.csv", help="The test dataset"
+        "--test_path", type=str, default="data/test_9.csv", help="The path to the test dataset"
     )
 
     parser.add_argument(
@@ -78,6 +78,13 @@ def create_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--fresh_start", action="store_true", help="Start fresh without loading checkpoint"
+    )
+
+    parser.add_argument(
+        "--cache_dir",
+        type=str,
+        default="data/cache",
+        help="Dataset cache directory."
     )
 
     return parser.parse_args()
