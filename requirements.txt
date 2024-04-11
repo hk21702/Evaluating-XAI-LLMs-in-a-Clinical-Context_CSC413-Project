@@ -12,3 +12,6 @@ wandb~=0.16.5
 scikit-learn ~=1.4.2
 accelerate
 datasets
+evaluate
+swifter
+flash-attn
