@@ -15,3 +15,4 @@ datasets
 evaluate
 swifter
 flash-attn
+peft

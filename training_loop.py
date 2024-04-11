@@ -11,7 +11,6 @@ from datasets import load_dataset
 from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
 from transformers import (
     AutoTokenizer,
-    AutoConfig,
     EvalPrediction,
     OPTForSequenceClassification,
     Trainer,
@@ -68,18 +67,18 @@ def train(args: argparse.Namespace):
     # change batch sizes back to 8 for testing
     training_args = TrainingArguments(
         output_dir=args.checkpoint_dir,
-        # auto_find_batch_size=True,
         dataloader_num_workers=3,
-        evaluation_strategy="epoch",
-        save_strategy="epoch",
+        evaluation_strategy="steps",
+        eval_steps=args.save_interval,
+        save_strategy="steps",
         accelerator_config={"split_batches": True},
         save_steps=args.save_interval,
         learning_rate=2e-5,
-        num_train_epochs=1,
+        num_train_epochs=2,
         weight_decay=0.01,
         load_best_model_at_end=True,
-        per_device_train_batch_size=2,
-        gradient_accumulation_steps=4,
+        per_device_train_batch_size=4,
+        gradient_accumulation_steps=2,
         gradient_checkpointing=True,
         gradient_checkpointing_kwargs={"use_reentrant": False},
         optim="adafactor",
@@ -96,16 +95,17 @@ def train(args: argparse.Namespace):
 
     if args.fresh_start:
         pprint("Fresh Start")
-        trainer = hyperparameter_search(
-            model_init,
-            training_args,
-            dataset,
-            tokenizer,
-            compute_metrics,
-            data_collator,
-            n_trials=2,
-        )
 
+        trainer = Trainer(
+            model_init=model_init,
+            args=training_args,
+            train_dataset=dataset["train"],
+            eval_dataset=dataset["validation"],
+            tokenizer=tokenizer,
+            compute_metrics=compute_metrics,
+            data_collator=data_collator,
+        )
+        trainer.train()
     else:
         # Load model from local checkpoint
         pprint("Attempting to load local model checkpoint")
@@ -138,7 +138,7 @@ def multi_labels_to_ids(labels: list[str]) -> list[float]:
 
 
 def tokenize(example):
-    result = tokenizer(example["text"], truncation=True, max_length=2045)
+    result = tokenizer(example["text"], truncation=True, max_length=2048)
     result["label"] = [multi_labels_to_ids(eval(label)) for label in example["label"]]
 
     return result
@@ -146,15 +146,6 @@ def tokenize(example):
 
 def model_init():
     """Model init for use for hyperparameter_search"""
-    config = AutoConfig.from_pretrained(
-        MODEL,
-        num_labels=len(classes),
-        id2label=id2class,
-        label2id=class2id,
-        problem_type="multi_label_classification",
-        device_map="auto",
-        max_position_embeddings=2560,
-    )
     model = OPTForSequenceClassification.from_pretrained(
         MODEL,
         num_labels=len(classes),
@@ -166,102 +157,12 @@ def model_init():
         attn_implementation="flash_attention_2",
     )
 
-    model.to('cuda')
+    model.to("cuda")
 
     return model
 
 
-def wandb_hp_space(trial):
-    """
-    Returns a dictionary representing the hyperparameter space for Weights & Biases (wandb) optimization.
-
-    Args:
-        trial: An object representing the current optimization trial.
-
-    Returns:
-        A dictionary containing the hyperparameter space for wandb optimization. The dictionary has the following structure:
-        {
-            "method": "random",
-            "metric": {"name": "loss", "goal": "minimize"},
-            "parameters": {
-                "learning_rate": {"distribution": "uniform", "min": 1e-6, "max": 1e-4},
-                "per_device_train_batch_size": {"values": [4, 8, 16]},
-            },
-        }
-    """
-    return {
-        "method": "random",
-        "metric": {"name": "loss", "goal": "minimize"},
-        "parameters": {
-            "learning_rate": {"distribution": "uniform", "min": 1e-6, "max": 1e-4},
-            "gradient_accumulation_steps": {"values": [1, 2, 4, 8]},
-        },
-    }
-
-
-def optuna_hp_space(trial):
-
-    return {
-        "learning_rate": trial.suggest_float("learning_rate", 1e-6, 1e-4, log=True),
-        "gradient_accumulation_steps": trial.suggest_categorical(
-            "gradient_accumulation_steps", [2, 4, 8]
-        ),
-    }
-
-
-def hyperparameter_search(
-    model_init,
-    args,
-    dataset,
-    tokenizer,
-    compute_metrics,
-    data_collator,
-    n_trials: int = 10,
-):
-    """
-    Perform hyperparameter search using the Trainer class.
-
-    Args:
-        model_init (function): A function that initializes the model.
-        num_labels (int): The number of labels in the dataset.
-        args: The arguments for training the model.
-        train_dataset: The training dataset.
-        eval_dataset: The evaluation dataset.
-        tokenizer: The tokenizer used for tokenizing the input data.
-        compute_metrics: A function that computes evaluation metrics.
-        n_trials (int, optional): The number of hyperparameter search trials. Defaults to 10.
-
-    Returns:
-        Trainer: Trainer with attributes of best run
-
-    """
-    pprint(f"Doing hyperparameter search with {n_trials} trials")
-
-    trainer = Trainer(
-        model_init=model_init,
-        args=args,
-        train_dataset=dataset["train"],
-        eval_dataset=dataset["validation"],
-        tokenizer=tokenizer,
-        compute_metrics=compute_metrics,
-        data_collator=data_collator,
-    )
-    trainer.train()
-
-    """best_run = trainer.hyperparameter_search(
-        hp_space=wandb_hp_space,
-        n_trials=n_trials,
-        direction="minimize",
-        backend="wandb",
-    )
-
-    pprint(best_run)
-
-    for n, v in best_run.hyperparameters.items():
-        setattr(trainer.args, n, v)"""
-    return trainer
-
-
+@DeprecationWarning
 def multi_label_metrics(predictions, labels, threshold=0.5):
     # source: https://jesusleal.io/2021/04/21/Longformer-multilabel-classification/
     # first, apply sigmoid on predictions which are of shape (batch_size, num_labels)
@@ -282,7 +183,6 @@ def multi_label_metrics(predictions, labels, threshold=0.5):
 
 def compute_metrics(p: EvalPrediction):
     """preds = p.predictions[0] if isinstance(p.predictions, tuple) else p.predictions
-    result = multi_label_metrics(predictions=preds, labels=p.label_ids)
     return result"""
 
     predictions, labels = p
@@ -293,44 +193,5 @@ def compute_metrics(p: EvalPrediction):
     )
 
 
-# TODO: leaving this code here for now but we should remove it before final submission
-def training_loop(
-    model,
-    dataset: pd.DataFrame,
-    dataset_codes: pd.DataFrame,
-    icd_code,
-    training_args: TrainingArguments,
-    trainer: Trainer,
-):
-    # split in to training and validation datasets
-    train_size = int(0.8 * len(dataset))
-    val_size = len(dataset) - train_size
-    train_dataset, val_dataset = torch.utils.data.random_split(
-        dataset, [train_size, val_size]
-    )
-
-    # send the model to the gpu if available
-    device = (
-        torch.cuda_set_device(1) if torch.cuda.is_available() else torch.device("cpu")
-    )
-    model.to(device)
-
-    training_args = TrainingArguments(output_dir="test_trainer")
-
-    trainer = Trainer(
-        model=model,
-        args=training_args,
-        train_dataset=train_dataset,
-        eval_dataset=val_dataset,
-        compute_metrics=compute_metrics,
-    )
-
-    trainer.train()
-
-
 if __name__ == "__main__":
-    icd_code = "icd10"
-    dataset_codes = f"data/{icd_code}_codes.csv"
-    dataset = f"data/mimic-iv-{icd_code}-small.csv"
-    # dataset_labels = f"data/mimic-iv-{icd_code}.csv"
-    training_loop(dataset, dataset_codes, icd_code)
+    print("Please use manager.py")
