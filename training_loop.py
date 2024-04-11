@@ -76,14 +76,14 @@ def train(args: argparse.Namespace):
         accelerator_config={"split_batches": True},
         save_steps=args.save_interval,
         learning_rate=2e-5,
-        num_train_epochs=2,
+        num_train_epochs=3,
         weight_decay=0.01,
         load_best_model_at_end=True,
-        per_device_train_batch_size=4,
-        gradient_accumulation_steps=2,
+        per_device_train_batch_size=8,
         gradient_checkpointing=True,
         gradient_checkpointing_kwargs={"use_reentrant": False},
         optim="adafactor",
+        save_total_limit=4,
     )
 
     lora_config = LoraConfig(
