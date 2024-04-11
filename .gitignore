@@ -6,3 +6,4 @@ data
 __pycache__
 scratch.ipynb
 wandb
+*.out

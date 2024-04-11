@@ -20,7 +20,7 @@ from transformers import (
 
 import wandb
 
-MODEL = "facebook/opt-2.7b"
+MODEL = "facebook/opt-1.3b"
 
 
 def train(args: argparse.Namespace):
@@ -108,8 +108,8 @@ def train(args: argparse.Namespace):
 
         model = model_init()
 
-        model = get_peft_model(model, lora_config)
-        model.print_trainable_parameters()
+        # model = get_peft_model(model, lora_config)
+        # model.print_trainable_parameters()
 
         trainer = Trainer(
             model=model,
