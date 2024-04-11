@@ -19,7 +19,8 @@ from transformers import (
     DataCollatorWithPadding,
 )
 
-MODEL = "facebook/opt-350m"
+MODEL = "facebook/opt-1.3b"
+
 
 def train(args: argparse.Namespace):
     # for some reason the trainer has issues passing parameters to the model_init function so this variable needs to be global
@@ -55,8 +56,6 @@ def train(args: argparse.Namespace):
     print("Tokenizing datasets. Loading from cache if available.")
     tokenizer = AutoTokenizer.from_pretrained(MODEL, use_fast=True)
 
-    torch.cuda.set_device(0)
-    torch.cuda.current_device()
     sigmoid = torch.nn.Sigmoid()
 
     # Run dummy tokenization run first to circumvent bug with hashing changing
@@ -69,13 +68,21 @@ def train(args: argparse.Namespace):
     # change batch sizes back to 8 for testing
     training_args = TrainingArguments(
         output_dir=args.checkpoint_dir,
+        # auto_find_batch_size=True,
+        dataloader_num_workers=3,
         evaluation_strategy="epoch",
         save_strategy="epoch",
+        accelerator_config={"split_batches": True},
         save_steps=args.save_interval,
         learning_rate=2e-5,
         num_train_epochs=1,
         weight_decay=0.01,
         load_best_model_at_end=True,
+        per_device_train_batch_size=2,
+        gradient_accumulation_steps=4,
+        gradient_checkpointing=True,
+        gradient_checkpointing_kwargs={"use_reentrant": False},
+        optim="adafactor",
     )
 
     data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
@@ -102,7 +109,11 @@ def train(args: argparse.Namespace):
     else:
         # Load model from local checkpoint
         pprint("Attempting to load local model checkpoint")
-        model = OPTForSequenceClassification.from_pretrained(args.checkpoint_dir)
+        model = OPTForSequenceClassification.from_pretrained(
+            args.checkpoint_dir,
+            torch_dtype=torch.float16,
+            attn_implementation="flash_attention_2",
+        )
 
         trainer = Trainer(
             model=model,
@@ -127,10 +138,7 @@ def multi_labels_to_ids(labels: list[str]) -> list[float]:
 
 
 def tokenize(example):
-    result = tokenizer(
-        example["text"],
-        add_special_tokens=True,
-    )
+    result = tokenizer(example["text"], truncation=True, max_length=2045)
     result["label"] = [multi_labels_to_ids(eval(label)) for label in example["label"]]
 
     return result
@@ -138,13 +146,29 @@ def tokenize(example):
 
 def model_init():
     """Model init for use for hyperparameter_search"""
-    return OPTForSequenceClassification.from_pretrained(
+    config = AutoConfig.from_pretrained(
         MODEL,
         num_labels=len(classes),
         id2label=id2class,
         label2id=class2id,
         problem_type="multi_label_classification",
+        device_map="auto",
+        max_position_embeddings=2560,
     )
+    model = OPTForSequenceClassification.from_pretrained(
+        MODEL,
+        num_labels=len(classes),
+        id2label=id2class,
+        label2id=class2id,
+        problem_type="multi_label_classification",
+        torch_dtype=torch.float16,
+        use_cache=False,
+        attn_implementation="flash_attention_2",
+    )
+
+    model.to('cuda')
+
+    return model
 
 
 def wandb_hp_space(trial):
@@ -161,7 +185,7 @@ def wandb_hp_space(trial):
             "metric": {"name": "loss", "goal": "minimize"},
             "parameters": {
                 "learning_rate": {"distribution": "uniform", "min": 1e-6, "max": 1e-4},
-                "per_device_train_batch_size": {"values": [16, 32, 64]},
+                "per_device_train_batch_size": {"values": [4, 8, 16]},
             },
         }
     """
@@ -170,8 +194,18 @@ def wandb_hp_space(trial):
         "metric": {"name": "loss", "goal": "minimize"},
         "parameters": {
             "learning_rate": {"distribution": "uniform", "min": 1e-6, "max": 1e-4},
-            "per_device_train_batch_size": {"values": [16, 32, 64]},
+            "gradient_accumulation_steps": {"values": [1, 2, 4, 8]},
         },
+    }
+
+
+def optuna_hp_space(trial):
+
+    return {
+        "learning_rate": trial.suggest_float("learning_rate", 1e-6, 1e-4, log=True),
+        "gradient_accumulation_steps": trial.suggest_categorical(
+            "gradient_accumulation_steps", [2, 4, 8]
+        ),
     }
 
 
@@ -212,8 +246,9 @@ def hyperparameter_search(
         compute_metrics=compute_metrics,
         data_collator=data_collator,
     )
+    trainer.train()
 
-    best_run = trainer.hyperparameter_search(
+    """best_run = trainer.hyperparameter_search(
         hp_space=wandb_hp_space,
         n_trials=n_trials,
         direction="minimize",
@@ -223,7 +258,7 @@ def hyperparameter_search(
     pprint(best_run)
 
     for n, v in best_run.hyperparameters.items():
-        setattr(trainer.args, n, v)
+        setattr(trainer.args, n, v)"""
     return trainer
 
 
