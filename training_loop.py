@@ -6,19 +6,21 @@ import evaluate
 import numpy as np
 import pandas as pd
 import torch
-import wandb
 from datasets import load_dataset
+from peft import LoraConfig, TaskType, get_peft_model
 from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
 from transformers import (
     AutoTokenizer,
+    DataCollatorWithPadding,
     EvalPrediction,
     OPTForSequenceClassification,
     Trainer,
     TrainingArguments,
-    DataCollatorWithPadding,
 )
 
-MODEL = "facebook/opt-1.3b"
+import wandb
+
+MODEL = "facebook/opt-2.7b"
 
 
 def train(args: argparse.Namespace):
@@ -84,6 +86,14 @@ def train(args: argparse.Namespace):
         optim="adafactor",
     )
 
+    lora_config = LoraConfig(
+        r=16,
+        target_modules=["q_proj", "v_proj"],
+        task_type=TaskType.SEQ_CLS,
+        lora_alpha=32,
+        lora_dropout=0.05,
+    )
+
     data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
 
     pprint(f"num_labels: {len(code_labels)}")
@@ -96,8 +106,13 @@ def train(args: argparse.Namespace):
     if args.fresh_start:
         pprint("Fresh Start")
 
+        model = model_init()
+
+        model = get_peft_model(model, lora_config)
+        model.print_trainable_parameters()
+
         trainer = Trainer(
-            model_init=model_init,
+            model=model,
             args=training_args,
             train_dataset=dataset["train"],
             eval_dataset=dataset["validation"],
@@ -106,6 +121,8 @@ def train(args: argparse.Namespace):
             data_collator=data_collator,
         )
         trainer.train()
+
+        model.save_pretrained(args.checkpoint_dir)
     else:
         # Load model from local checkpoint
         pprint("Attempting to load local model checkpoint")
@@ -126,8 +143,8 @@ def train(args: argparse.Namespace):
 
         trainer.train(resume_from_checkpoint=True)
 
-    trainer.save_model(args.checkpoint_dir)
-    trainer.save_state()
+        trainer.save_model(args.checkpoint_dir)
+        trainer.save_state()
 
 
 def multi_labels_to_ids(labels: list[str]) -> list[float]:
@@ -155,6 +172,7 @@ def model_init():
         torch_dtype=torch.float16,
         use_cache=False,
         attn_implementation="flash_attention_2",
+        ignore_mismatched_sizes=True,
     )
 
     model.to("cuda")
