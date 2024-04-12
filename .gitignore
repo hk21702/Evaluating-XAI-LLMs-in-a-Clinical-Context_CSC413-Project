@@ -7,3 +7,4 @@ __pycache__
 scratch.ipynb
 wandb
 *.out
+opt-finetuned*

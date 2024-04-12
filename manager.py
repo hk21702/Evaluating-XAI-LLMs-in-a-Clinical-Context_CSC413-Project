@@ -20,7 +20,6 @@ Example:
 
 import argparse
 import os
-import pathlib
 
 import training_loop
 
@@ -41,32 +40,48 @@ def create_args() -> argparse.Namespace:
         help="Time limit for training in minutes will save at end of limit",
     )
     parser.add_argument(
-        "--checkpoint_dir", type=str, default='opt-finetuned-icd9', help="Checkpoint directory to save in"
+        "--checkpoint_dir",
+        type=str,
+        default="opt-finetuned-icd9",
+        help="Checkpoint directory to save in",
     )
     parser.add_argument(
-        "--train_path", type=str, default="data/train_9.csv", help="The path to the training dataset"
-    )
-
-    parser.add_argument(
-        "--val_path", type=str, default="data/val_9.csv", help="The path to the evaluation dataset"
-    )
-
-    parser.add_argument(
-        "--test_path", type=str, default="data/test_9.csv", help="The path to the test dataset"
+        "--train_path",
+        type=str,
+        default="data/train_9.csv",
+        help="The path to the training dataset",
     )
 
     parser.add_argument(
-        "--code_labels", type=str, default="data/icd9_codes.csv", help="The training dataset code labels"
+        "--val_path",
+        type=str,
+        default="data/val_9.csv",
+        help="The path to the evaluation dataset",
     )
 
     parser.add_argument(
-        "--save_interval", type=int, default=1000, help="Save interval in steps for checkpoints."
+        "--test_path",
+        type=str,
+        default="data/test_9.csv",
+        help="The path to the test dataset",
+    )
+
+    parser.add_argument(
+        "--code_labels",
+        type=str,
+        default="data/icd9_codes.csv",
+        help="The training dataset code labels",
+    )
+
+    parser.add_argument(
+        "--save_interval",
+        type=int,
+        default=1000,
+        help="Save interval in steps for checkpoints.",
     )
 
     # Wandb api key (optional skip wandb usage if not provided)
-    parser.add_argument(
-        "--wandb_key", type=str, default=None, help="Wandb API key"
-    )
+    parser.add_argument("--wandb_key", type=str, default=None, help="Wandb API key")
 
     parser.add_argument("--run_name", type=str, default="run", help="Name of the run")
 
@@ -77,14 +92,27 @@ def create_args() -> argparse.Namespace:
         help="Name of the run for Wandb",
     )
     parser.add_argument(
-        "--fresh_start", action="store_true", help="Start fresh without loading checkpoint"
+        "--fresh_start",
+        action="store_true",
+        help="Start fresh without loading checkpoint",
     )
 
     parser.add_argument(
-        "--cache_dir",
-        type=str,
-        default="data/cache",
-        help="Dataset cache directory."
+        "--cache_dir", type=str, default="data/cache", help="Dataset cache directory."
+    )
+
+    parser.add_argument(
+        "--disable_tqdm", action="store_true", help="Disable tqdm in output"
+    )
+
+    parser.add_argument(
+        "--epochs", type=int, default=3, help="Number of epochs to train the model for"
+    )
+
+    parser.add_argument(
+        "--tiny",
+        action="store_true",
+        help="Use a tiny subset of dataset for training"
     )
 
     return parser.parse_args()
@@ -96,8 +124,9 @@ def main():
     """
     args = create_args()
     if args.task == "train":
-        os.environ["WANDB_PROJECT"]=args.project_name
-        os.environ["WANDB_API_KEY"]=args.wandb_key
+        os.environ["WANDB_PROJECT"] = args.project_name
+        os.environ["WANDB_API_KEY"] = args.wandb_key
+        os.environ["WANDB_LOG_MODEL"] = "checkpoint"
         training_loop.train(args)
     else:
         raise ValueError("Task not recognized")

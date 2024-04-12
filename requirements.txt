@@ -1,9 +1,9 @@
 ipykernel~=6.29.3
-ipython~=8.22.2
+ipython~=8.23.2
 matplotlib~=3.8.3
 matplotlib-inline~=0.1.6
 numpy~=1.26.4
-pandas~=2.2.1
+pandas~=2.2.2
 tokenizers~=0.15.2
 torch~=2.2.2
 tqdm~=4.66.2

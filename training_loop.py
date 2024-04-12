@@ -8,9 +8,9 @@ import pandas as pd
 import torch
 from datasets import load_dataset
 from peft import LoraConfig, TaskType, get_peft_model
-from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
 from transformers import (
     AutoTokenizer,
+    AutoConfig,
     DataCollatorWithPadding,
     EvalPrediction,
     OPTForSequenceClassification,
@@ -20,7 +20,8 @@ from transformers import (
 
 import wandb
 
-MODEL = "facebook/opt-1.3b"
+MODEL = "facebook/opt-2.7b"
+MAX_POSITION_EMBEDDINGS = 2560
 
 
 def train(args: argparse.Namespace):
@@ -31,8 +32,6 @@ def train(args: argparse.Namespace):
     global id2class
     global clf_metrics
 
-    global sigmoid
-
     print("Loading datasets")
     data_files = {
         "train": args.train_path,
@@ -41,10 +40,6 @@ def train(args: argparse.Namespace):
     }
 
     code_labels = pd.read_csv(args.code_labels)
-    """train_set = pd.read_csv(args.train_path)
-    val_set = pd.read_csv(args.val_path)
-    test_set = pd.read_csv(args.test_path)"""
-
     dataset = load_dataset("csv", data_files=data_files, cache_dir=args.cache_dir)
 
     # Create class dictionaries
@@ -52,22 +47,16 @@ def train(args: argparse.Namespace):
     class2id = {class_: id for id, class_ in enumerate(classes)}
     id2class = {id: class_ for class_, id in class2id.items()}
 
-    clf_metrics = evaluate.combine(["accuracy", "f1", "precision", "recall", "roc_auc"])
+    clf_metrics = evaluate.combine(["accuracy", "f1", "precision", "recall"])
 
     print("Tokenizing datasets. Loading from cache if available.")
     tokenizer = AutoTokenizer.from_pretrained(MODEL, use_fast=True)
 
-    sigmoid = torch.nn.Sigmoid()
-
-    # Run dummy tokenization run first to circumvent bug with hashing changing
-    # tokenizer("Some", "test")
-
     dataset = dataset.map(tokenize, load_from_cache_file=True, batched=True, num_proc=8)
 
-    # make sure to update num_train_epochs for actual training
     # note - save stratedy and evaluation strategy need to match
-    # change batch sizes back to 8 for testing
     training_args = TrainingArguments(
+        disable_tqdm=args.disable_tqdm,
         output_dir=args.checkpoint_dir,
         dataloader_num_workers=3,
         evaluation_strategy="steps",
@@ -76,23 +65,24 @@ def train(args: argparse.Namespace):
         accelerator_config={"split_batches": True},
         save_steps=args.save_interval,
         learning_rate=2e-5,
-        num_train_epochs=3,
+        num_train_epochs=args.epochs,
         weight_decay=0.01,
         load_best_model_at_end=True,
         per_device_train_batch_size=8,
         gradient_checkpointing=True,
+        ddp_find_unused_parameters=False,
         gradient_checkpointing_kwargs={"use_reentrant": False},
         optim="adafactor",
         save_total_limit=4,
     )
 
-    lora_config = LoraConfig(
-        r=16,
-        target_modules=["q_proj", "v_proj"],
-        task_type=TaskType.SEQ_CLS,
-        lora_alpha=32,
-        lora_dropout=0.05,
-    )
+    if args.tiny:
+        # Use tiny subset of dataset
+        dataset["train"] = dataset["train"].select(range(800))
+        dataset["validation"] = dataset["validation"].select(range(50))
+        dataset["test"] = dataset["test"].select(range(100))
+        training_args.evaluation_strategy = "epoch"
+        training_args.eval_steps = 1
 
     data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
 
@@ -106,13 +96,8 @@ def train(args: argparse.Namespace):
     if args.fresh_start:
         pprint("Fresh Start")
 
-        model = model_init()
-
-        # model = get_peft_model(model, lora_config)
-        # model.print_trainable_parameters()
-
         trainer = Trainer(
-            model=model,
+            model_init=model_init,
             args=training_args,
             train_dataset=dataset["train"],
             eval_dataset=dataset["validation"],
@@ -121,8 +106,6 @@ def train(args: argparse.Namespace):
             data_collator=data_collator,
         )
         trainer.train()
-
-        model.save_pretrained(args.checkpoint_dir)
     else:
         # Load model from local checkpoint
         pprint("Attempting to load local model checkpoint")
@@ -143,8 +126,8 @@ def train(args: argparse.Namespace):
 
         trainer.train(resume_from_checkpoint=True)
 
-        trainer.save_model(args.checkpoint_dir)
-        trainer.save_state()
+    trainer.save_model(args.checkpoint_dir)
+    trainer.save_state()
 
 
 def multi_labels_to_ids(labels: list[str]) -> list[float]:
@@ -155,7 +138,9 @@ def multi_labels_to_ids(labels: list[str]) -> list[float]:
 
 
 def tokenize(example):
-    result = tokenizer(example["text"], truncation=True, max_length=2048)
+    result = tokenizer(
+        example["text"], truncation=True, max_length=MAX_POSITION_EMBEDDINGS
+    )
     result["label"] = [multi_labels_to_ids(eval(label)) for label in example["label"]]
 
     return result
@@ -163,40 +148,40 @@ def tokenize(example):
 
 def model_init():
     """Model init for use for hyperparameter_search"""
-    model = OPTForSequenceClassification.from_pretrained(
+    lora_config = LoraConfig(
+        r=16,
+        target_modules=["q_proj", "v_proj"],
+        task_type=TaskType.SEQ_CLS,
+        lora_alpha=32,
+        lora_dropout=0.05,
+    )
+
+    config, unused_kwargs = AutoConfig.from_pretrained(
         MODEL,
         num_labels=len(classes),
         id2label=id2class,
         label2id=class2id,
         problem_type="multi_label_classification",
-        torch_dtype=torch.float16,
-        use_cache=False,
+        use_cache=False,  # Renable this for inference!
         attn_implementation="flash_attention_2",
-        ignore_mismatched_sizes=True,
+        return_unused_kwargs=True,
+        max_position_embeddings=MAX_POSITION_EMBEDDINGS,
     )
 
-    model.to("cuda")
+    if unused_kwargs:
+        print(f"Unused kwargs: {unused_kwargs}")
+
+    model = OPTForSequenceClassification.from_pretrained(
+        MODEL,
+        config=config,
+        torch_dtype=torch.float16,
+        ignore_mismatched_sizes=True,
+    )
+    model.tie_weights()
+    model = get_peft_model(model, lora_config)
+    model.print_trainable_parameters()
 
     return model
-
-
-@DeprecationWarning
-def multi_label_metrics(predictions, labels, threshold=0.5):
-    # source: https://jesusleal.io/2021/04/21/Longformer-multilabel-classification/
-    # first, apply sigmoid on predictions which are of shape (batch_size, num_labels)
-    sigmoid = torch.nn.Sigmoid()
-    probs = sigmoid(torch.Tensor(predictions))
-    # next, use threshold to turn them into integer predictions
-    y_pred = np.zeros(probs.shape)
-    y_pred[np.where(probs >= threshold)] = 1
-    # finally, compute metrics
-    y_true = labels
-    f1_micro_average = f1_score(y_true=y_true, y_pred=y_pred, average="micro")
-    roc_auc = roc_auc_score(y_true, y_pred, average="micro")
-    accuracy = accuracy_score(y_true, y_pred)
-    # return as dictionary
-    metrics = {"f1": f1_micro_average, "roc_auc": roc_auc, "accuracy": accuracy}
-    return metrics
 
 
 def compute_metrics(p: EvalPrediction):
@@ -204,7 +189,7 @@ def compute_metrics(p: EvalPrediction):
     return result"""
 
     predictions, labels = p
-    predictions = sigmoid(predictions)
+    predictions = 1 / (1 + np.exp(-predictions))
     predictions = (predictions > 0.5).astype(int).reshape(-1)
     return clf_metrics.compute(
         predictions=predictions, references=labels.astype(int).reshape(-1)
