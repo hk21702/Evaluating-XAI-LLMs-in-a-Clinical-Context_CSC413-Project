@@ -5,9 +5,7 @@ Our project focuses on assessing and improving local interpretability method of 
 
 ## Requirements
 - [MIMIC-IV](https://physionet.org/content/mimiciv/2.2/) and [MIMIC-IV Note](https://physionet.org/content/mimic-iv-note/2.2/) datasets
-- Numpy
-- Pandas
-- matplotlib
+- see requirements.txt
 
 
 ## TODOs
@@ -15,5 +13,4 @@ Our project focuses on assessing and improving local interpretability method of 
   <li> Trained Classifier
   <li> XAI Implementations
   <li> Report
-  <li> Update docuomentation requirments with appropriate version for library requirements
 </ul>
