@@ -106,7 +106,7 @@ def create_args() -> argparse.Namespace:
     )
 
     parser.add_argument(
-        "--epochs", type=int, default=3, help="Number of epochs to train the model for"
+        "--epochs", type=int, default=2, help="Number of epochs to train the model for"
     )
 
     parser.add_argument(

@@ -8,15 +8,9 @@ import pandas as pd
 import torch
 from datasets import load_dataset
 from peft import LoraConfig, TaskType, get_peft_model
-from transformers import (
-    AutoTokenizer,
-    AutoConfig,
-    DataCollatorWithPadding,
-    EvalPrediction,
-    OPTForSequenceClassification,
-    Trainer,
-    TrainingArguments,
-)
+from transformers import (AutoConfig, AutoTokenizer, DataCollatorWithPadding,
+                          EvalPrediction, OPTForSequenceClassification,
+                          Trainer, TrainingArguments)
 
 import wandb
 
@@ -56,22 +50,22 @@ def train(args: argparse.Namespace):
 
     # note - save stratedy and evaluation strategy need to match
     training_args = TrainingArguments(
+        auto_find_batch_size=True,
         disable_tqdm=args.disable_tqdm,
         output_dir=args.checkpoint_dir,
         dataloader_num_workers=3,
         evaluation_strategy="steps",
         eval_steps=args.save_interval,
         save_strategy="steps",
-        accelerator_config={"split_batches": True},
-        save_steps=args.save_interval,
+        save_steps=args.save_interval * 2,
         learning_rate=2e-5,
         num_train_epochs=args.epochs,
         weight_decay=0.01,
         load_best_model_at_end=True,
         per_device_train_batch_size=8,
-        gradient_checkpointing=True,
+        #gradient_checkpointing=True,
         ddp_find_unused_parameters=False,
-        gradient_checkpointing_kwargs={"use_reentrant": False},
+        #gradient_checkpointing_kwargs={"use_reentrant": False},
         optim="adafactor",
         save_total_limit=4,
     )
@@ -162,7 +156,7 @@ def model_init():
         id2label=id2class,
         label2id=class2id,
         problem_type="multi_label_classification",
-        use_cache=False,  # Renable this for inference!
+        # use_cache=False,  # Renable this for inference!
         attn_implementation="flash_attention_2",
         return_unused_kwargs=True,
         max_position_embeddings=MAX_POSITION_EMBEDDINGS,
