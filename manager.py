@@ -34,12 +34,6 @@ def create_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Manager")
     parser.add_argument("task", type=str, help="Task to perform")
     parser.add_argument(
-        "--time_limit",
-        type=int,
-        default=100,
-        help="Time limit for training in minutes will save at end of limit",
-    )
-    parser.add_argument(
         "--checkpoint_dir",
         type=str,
         default="opt-finetuned-icd9",
@@ -76,8 +70,8 @@ def create_args() -> argparse.Namespace:
     parser.add_argument(
         "--save_interval",
         type=int,
-        default=1000,
-        help="Save interval in steps for checkpoints.",
+        default=1,
+        help="Save interval in epochs for checkpoints.",
     )
 
     # Wandb api key (optional skip wandb usage if not provided)
@@ -115,6 +109,10 @@ def create_args() -> argparse.Namespace:
         help="Use a tiny subset of dataset for training"
     )
 
+    parser.add_argument(
+        "--search", action="store_true", help="Run hyperparam search (requires fresh_start)"
+    )
+
     return parser.parse_args()
 
 
@@ -127,6 +125,9 @@ def main():
         os.environ["WANDB_PROJECT"] = args.project_name
         os.environ["WANDB_API_KEY"] = args.wandb_key
         os.environ["WANDB_LOG_MODEL"] = "checkpoint"
+
+        if args.search:
+            assert args.fresh_start
         training_loop.train(args)
     else:
         raise ValueError("Task not recognized")

@@ -1,4 +1,3 @@
-# please note that is code is based on https://huggingface.co/docs/transformers/en/training
 import argparse
 from pprint import pprint
 
@@ -17,7 +16,6 @@ from transformers import (
     Trainer,
     TrainingArguments,
 )
-
 import wandb
 
 MODEL = "facebook/opt-2.7b"
@@ -30,7 +28,6 @@ def train(args: argparse.Namespace):
     global classes
     global class2id
     global id2class
-    global clf_metrics
 
     print("Loading datasets")
     data_files = {
@@ -47,12 +44,12 @@ def train(args: argparse.Namespace):
     class2id = {class_: id for id, class_ in enumerate(classes)}
     id2class = {id: class_ for class_, id in class2id.items()}
 
-    clf_metrics = evaluate.combine(["accuracy", "f1", "precision", "recall"])
-
     print("Tokenizing datasets. Loading from cache if available.")
     tokenizer = AutoTokenizer.from_pretrained(MODEL, use_fast=True)
 
     dataset = dataset.map(tokenize, load_from_cache_file=True, batched=True, num_proc=8)
+
+    create_metrics(args)
 
     # note - save stratedy and evaluation strategy need to match
     training_args = TrainingArguments(
@@ -60,11 +57,12 @@ def train(args: argparse.Namespace):
         disable_tqdm=args.disable_tqdm,
         output_dir=args.checkpoint_dir,
         dataloader_num_workers=3,
-        evaluation_strategy="epochs",
+        evaluation_strategy="epoch",
         eval_steps=args.save_interval,
-        save_strategy="epochs",
+        save_strategy="epoch",
         save_steps=args.save_interval,
-        learning_rate=2e-5,
+        warmup_steps=200,
+        learning_rate=2e-6,
         num_train_epochs=args.epochs,
         weight_decay=0.01,
         load_best_model_at_end=True,
@@ -73,17 +71,15 @@ def train(args: argparse.Namespace):
         ddp_find_unused_parameters=False,
         eval_accumulation_steps=250,
         logging_steps=200,
-        optim="adafactor",
+        # optim="adafactor",
         save_total_limit=4,
     )
 
     if args.tiny:
         # Use tiny subset of dataset
-        dataset["train"] = dataset["train"].select(range(100))
-        dataset["validation"] = dataset["validation"].select(
-            range(int(len(dataset["validation"]) * 0.25))
-        )
-        dataset["test"] = dataset["test"].select(range(100))
+        dataset["train"] = dataset["train"].shard(index=1, num_shards=60)
+        dataset["validation"] = dataset["validation"].shard(index=1, num_shards=60)
+        dataset["test"] = dataset["test"].shard(index=1, num_shards=60)
         training_args.evaluation_strategy = "epoch"
         training_args.eval_steps = 1
 
@@ -108,7 +104,17 @@ def train(args: argparse.Namespace):
             compute_metrics=compute_metrics,
             data_collator=data_collator,
         )
-        trainer.train()
+        if args.search:
+            best_run = trainer.hyperparameter_search(
+                n_trials=10,
+                backend="optuna",
+                hp_space=optuna_hp_space,
+                direction="maximize",
+            )
+
+            print(best_run)
+        else:
+            trainer.train()
     else:
         # Load model from local checkpoint
         pprint("Attempting to load local model checkpoint")
@@ -131,6 +137,36 @@ def train(args: argparse.Namespace):
 
     trainer.save_model(args.checkpoint_dir)
     trainer.save_state()
+
+
+def optuna_hp_space(trial):
+
+    return {
+        "learning_rate": trial.suggest_float("learning_rate", 1e-6, 1e-4, log=True),
+        "weight_decay": trial.suggest_float("weight_decay", 0, 0.1),
+        "warmup_steps": trial.suggest_int("warmup_steps", 0, 400, step=200)
+    }
+
+
+def create_metrics(args):
+    global clf_metrics
+
+    print("Creating evaluation metrics")
+
+    f1 = evaluate.load(
+        "f1",
+        config_name="multilabel",
+    )
+    precision = evaluate.load(
+        "precision",
+        config_name="multilabel",
+    )
+    recall = evaluate.load(
+        "recall",
+        config_name="multilabel",
+    )
+
+    clf_metrics = evaluate.combine([f1, precision, recall])
 
 
 def multi_labels_to_ids(labels: list[str]) -> list[float]:
@@ -165,7 +201,6 @@ def model_init():
         id2label=id2class,
         label2id=class2id,
         problem_type="multi_label_classification",
-        # use_cache=False,  # Renable this for inference!
         attn_implementation="flash_attention_2",
         return_unused_kwargs=True,
         max_position_embeddings=MAX_POSITION_EMBEDDINGS,
@@ -190,18 +225,14 @@ def model_init():
 def compute_metrics(p: EvalPrediction):
     """preds = p.predictions[0] if isinstance(p.predictions, tuple) else p.predictions
     return result"""
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    preds = p.predictions[0] if isinstance(p.predictions, tuple) else p.predictions
 
-    predictions, labels = p
-    predictions = torch.tensor(predictions, pin_memory=True, device=device)
-    labels = torch.tensor(labels, dtype=torch.int16, pin_memory=True, device=device)
+    preds = np.where(preds > 0, 1, 0)
 
-    torch.sigmoid_(predictions)
-    predictions = (predictions > 0.5).view(-1)
-
-    labels = labels.view(-1)
-
-    return clf_metrics.compute(predictions=predictions, references=labels,)
+    result = clf_metrics.compute(
+        predictions=preds, references=p.label_ids, average="micro"
+    )
+    return result
 
 
 if __name__ == "__main__":
