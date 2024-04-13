@@ -17,3 +17,4 @@ swifter
 flash-attn
 peft
 lime
+scipy
