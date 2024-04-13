@@ -8,9 +8,15 @@ import pandas as pd
 import torch
 from datasets import load_dataset
 from peft import LoraConfig, TaskType, get_peft_model
-from transformers import (AutoConfig, AutoTokenizer, DataCollatorWithPadding,
-                          EvalPrediction, OPTForSequenceClassification,
-                          Trainer, TrainingArguments)
+from transformers import (
+    AutoConfig,
+    AutoTokenizer,
+    DataCollatorWithPadding,
+    EvalPrediction,
+    OPTForSequenceClassification,
+    Trainer,
+    TrainingArguments,
+)
 
 import wandb
 
@@ -54,26 +60,29 @@ def train(args: argparse.Namespace):
         disable_tqdm=args.disable_tqdm,
         output_dir=args.checkpoint_dir,
         dataloader_num_workers=3,
-        evaluation_strategy="steps",
+        evaluation_strategy="epochs",
         eval_steps=args.save_interval,
-        save_strategy="steps",
-        save_steps=args.save_interval * 2,
+        save_strategy="epochs",
+        save_steps=args.save_interval,
         learning_rate=2e-5,
         num_train_epochs=args.epochs,
         weight_decay=0.01,
         load_best_model_at_end=True,
         per_device_train_batch_size=8,
-        #gradient_checkpointing=True,
+        per_device_eval_batch_size=8,
         ddp_find_unused_parameters=False,
-        #gradient_checkpointing_kwargs={"use_reentrant": False},
+        eval_accumulation_steps=250,
+        logging_steps=200,
         optim="adafactor",
         save_total_limit=4,
     )
 
     if args.tiny:
         # Use tiny subset of dataset
-        dataset["train"] = dataset["train"].select(range(800))
-        dataset["validation"] = dataset["validation"].select(range(50))
+        dataset["train"] = dataset["train"].select(range(100))
+        dataset["validation"] = dataset["validation"].select(
+            range(int(len(dataset["validation"]) * 0.25))
+        )
         dataset["test"] = dataset["test"].select(range(100))
         training_args.evaluation_strategy = "epoch"
         training_args.eval_steps = 1
@@ -181,13 +190,18 @@ def model_init():
 def compute_metrics(p: EvalPrediction):
     """preds = p.predictions[0] if isinstance(p.predictions, tuple) else p.predictions
     return result"""
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     predictions, labels = p
-    predictions = 1 / (1 + np.exp(-predictions))
-    predictions = (predictions > 0.5).astype(int).reshape(-1)
-    return clf_metrics.compute(
-        predictions=predictions, references=labels.astype(int).reshape(-1)
-    )
+    predictions = torch.tensor(predictions, pin_memory=True, device=device)
+    labels = torch.tensor(labels, dtype=torch.int16, pin_memory=True, device=device)
+
+    torch.sigmoid_(predictions)
+    predictions = (predictions > 0.5).view(-1)
+
+    labels = labels.view(-1)
+
+    return clf_metrics.compute(predictions=predictions, references=labels,)
 
 
 if __name__ == "__main__":
