@@ -8,3 +8,4 @@ scratch.ipynb
 wandb
 *.out
 opt-finetuned*
+.old_data

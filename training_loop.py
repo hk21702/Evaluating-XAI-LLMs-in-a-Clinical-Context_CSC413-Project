@@ -5,6 +5,7 @@ import evaluate
 import numpy as np
 import pandas as pd
 import torch
+from torch import nn
 from datasets import load_dataset
 from peft import LoraConfig, TaskType, get_peft_model
 from transformers import (
@@ -23,7 +24,6 @@ MAX_POSITION_EMBEDDINGS = 2560
 
 
 def train(args: argparse.Namespace):
-    # for some reason the trainer has issues passing parameters to the model_init function so this variable needs to be global
     global tokenizer
     global classes
     global class2id
@@ -66,20 +66,22 @@ def train(args: argparse.Namespace):
         num_train_epochs=args.epochs,
         weight_decay=0.01,
         load_best_model_at_end=True,
-        per_device_train_batch_size=8,
-        per_device_eval_batch_size=8,
+        per_device_train_batch_size=4,
+        per_device_eval_batch_size=4,
+        gradient_accumulation_steps=2,
         ddp_find_unused_parameters=False,
         eval_accumulation_steps=250,
-        logging_steps=200,
+        logging_steps=100,
+        adam_epsilon=1e-4,
         # optim="adafactor",
         save_total_limit=4,
     )
 
     if args.tiny:
         # Use tiny subset of dataset
-        dataset["train"] = dataset["train"].shard(index=1, num_shards=60)
-        dataset["validation"] = dataset["validation"].shard(index=1, num_shards=60)
-        dataset["test"] = dataset["test"].shard(index=1, num_shards=60)
+        dataset["train"] = dataset["train"].shard(index=1, num_shards=80)
+        dataset["validation"] = dataset["validation"].shard(index=1, num_shards=150)
+        dataset["test"] = dataset["test"].shard(index=1, num_shards=150)
         training_args.evaluation_strategy = "epoch"
         training_args.eval_steps = 1
 
@@ -105,8 +107,10 @@ def train(args: argparse.Namespace):
             data_collator=data_collator,
         )
         if args.search:
+            print("Doing hyperparameter search")
+
             best_run = trainer.hyperparameter_search(
-                n_trials=10,
+                n_trials=20,
                 backend="optuna",
                 hp_space=optuna_hp_space,
                 direction="maximize",
@@ -143,8 +147,9 @@ def optuna_hp_space(trial):
 
     return {
         "learning_rate": trial.suggest_float("learning_rate", 1e-6, 1e-4, log=True),
+        "adam_epsilon": trial.suggest_float("adam_epsilon", 1e-7, 0.1, log=True),
         "weight_decay": trial.suggest_float("weight_decay", 0, 0.1),
-        "warmup_steps": trial.suggest_int("warmup_steps", 0, 400, step=200)
+        "warmup_steps": trial.suggest_int("warmup_steps", 0, 400, step=200),
     }
 
 
@@ -180,7 +185,7 @@ def tokenize(example):
     result = tokenizer(
         example["text"], truncation=True, max_length=MAX_POSITION_EMBEDDINGS
     )
-    result["label"] = [multi_labels_to_ids(eval(label)) for label in example["label"]]
+    result["labels"] = [multi_labels_to_ids(eval(label)) for label in example["labels"]]
 
     return result
 
@@ -215,6 +220,14 @@ def model_init():
         torch_dtype=torch.float16,
         ignore_mismatched_sizes=True,
     )
+
+    # Cast output to float32 for improved numerical stability
+    class CastOutputToFloat(nn.Sequential):
+        def forward(self, x):
+            return super().forward(x).to(torch.float32)
+
+    model.score = CastOutputToFloat(model.score)
+
     model.tie_weights()
     model = get_peft_model(model, lora_config)
     model.print_trainable_parameters()

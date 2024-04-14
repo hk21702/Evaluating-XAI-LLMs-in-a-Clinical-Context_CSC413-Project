@@ -104,13 +104,13 @@ def create_args() -> argparse.Namespace:
     )
 
     parser.add_argument(
-        "--tiny",
-        action="store_true",
-        help="Use a tiny subset of dataset for training"
+        "--tiny", action="store_true", help="Use a tiny subset of dataset for training"
     )
 
     parser.add_argument(
-        "--search", action="store_true", help="Run hyperparam search (requires fresh_start)"
+        "--search",
+        action="store_true",
+        help="Run hyperparam search (requires fresh_start)",
     )
 
     return parser.parse_args()
@@ -124,10 +124,12 @@ def main():
     if args.task == "train":
         os.environ["WANDB_PROJECT"] = args.project_name
         os.environ["WANDB_API_KEY"] = args.wandb_key
-        os.environ["WANDB_LOG_MODEL"] = "checkpoint"
 
         if args.search:
             assert args.fresh_start
+        else:
+            os.environ["WANDB_LOG_MODEL"] = "checkpoint"
+
         training_loop.train(args)
     else:
         raise ValueError("Task not recognized")
