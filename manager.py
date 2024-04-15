@@ -36,7 +36,7 @@ def create_args() -> argparse.Namespace:
     parser.add_argument(
         "--checkpoint_dir",
         type=str,
-        default="opt-finetuned-icd9",
+        default="opt-finetuned-icd9-1.3b",
         help="Checkpoint directory to save in",
     )
     parser.add_argument(
@@ -82,7 +82,7 @@ def create_args() -> argparse.Namespace:
     parser.add_argument(
         "--project_name",
         type=str,
-        default="OPT-Finetuning ICD9",
+        default="OPT-Finetuning ICD9 1.3b",
         help="Name of the run for Wandb",
     )
     parser.add_argument(
@@ -100,7 +100,7 @@ def create_args() -> argparse.Namespace:
     )
 
     parser.add_argument(
-        "--epochs", type=int, default=2, help="Number of epochs to train the model for"
+        "--epochs", type=int, default=30, help="Number of epochs to train the model for"
     )
 
     parser.add_argument(
