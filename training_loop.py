@@ -19,8 +19,8 @@ from transformers import (
 )
 import wandb
 
-MODEL = "facebook/opt-2.7b"
-MAX_POSITION_EMBEDDINGS = 2560
+MODEL = "facebook/opt-1.3b"
+MAX_POSITION_EMBEDDINGS = 2048
 
 
 def train(args: argparse.Namespace):
