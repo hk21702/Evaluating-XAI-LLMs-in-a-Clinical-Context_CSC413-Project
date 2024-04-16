@@ -34,15 +34,9 @@ def create_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Manager")
     parser.add_argument("task", type=str, help="Task to perform")
     parser.add_argument(
-        "--time_limit",
-        type=int,
-        default=100,
-        help="Time limit for training in minutes will save at end of limit",
-    )
-    parser.add_argument(
         "--checkpoint_dir",
         type=str,
-        default="opt-finetuned-icd9",
+        default="opt-finetuned-icd9-350m",
         help="Checkpoint directory to save in",
     )
     parser.add_argument(
@@ -76,8 +70,8 @@ def create_args() -> argparse.Namespace:
     parser.add_argument(
         "--save_interval",
         type=int,
-        default=1000,
-        help="Save interval in steps for checkpoints.",
+        default=1,
+        help="Save interval in epochs for checkpoints.",
     )
 
     # Wandb api key (optional skip wandb usage if not provided)
@@ -88,7 +82,7 @@ def create_args() -> argparse.Namespace:
     parser.add_argument(
         "--project_name",
         type=str,
-        default="OPT-Finetuning ICD9",
+        default="OPT-Finetuning ICD9 350m",
         help="Name of the run for Wandb",
     )
     parser.add_argument(
@@ -98,7 +92,10 @@ def create_args() -> argparse.Namespace:
     )
 
     parser.add_argument(
-        "--cache_dir", type=str, default="data/cache", help="Dataset cache directory."
+        "--cache_dir",
+        type=str,
+        default="data/cache",
+        help="Dataset cache directory.",
     )
 
     parser.add_argument(
@@ -106,13 +103,33 @@ def create_args() -> argparse.Namespace:
     )
 
     parser.add_argument(
-        "--epochs", type=int, default=2, help="Number of epochs to train the model for"
+        "--epochs", type=int, default=30, help="Number of epochs to train the model for"
     )
 
     parser.add_argument(
-        "--tiny",
+        "--n_trials", type=int, default=15, help="Number of hyperparam search trials"
+    )
+
+    parser.add_argument(
+        "--tiny", action="store_true", help="Use a tiny subset of dataset for training"
+    )
+
+    parser.add_argument(
+        "--search",
         action="store_true",
-        help="Use a tiny subset of dataset for training"
+        help="Run hyperparam search (requires fresh_start)",
+    )
+
+    parser.add_argument(
+        "--gradient_checkpointing",
+        action="store_true",
+        help="Use gradient checkpointing",
+    )
+
+    parser.add_argument(
+        "--events_classification_biotech",
+        action="store_true",
+        help="Use the events_classification_biotech dataset",
     )
 
     return parser.parse_args()
@@ -126,7 +143,12 @@ def main():
     if args.task == "train":
         os.environ["WANDB_PROJECT"] = args.project_name
         os.environ["WANDB_API_KEY"] = args.wandb_key
-        os.environ["WANDB_LOG_MODEL"] = "checkpoint"
+
+        if args.search:
+            assert args.fresh_start
+        else:
+            os.environ["WANDB_LOG_MODEL"] = "checkpoint"
+
         training_loop.train(args)
     else:
         raise ValueError("Task not recognized")
