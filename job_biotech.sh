@@ -7,4 +7,4 @@
 
 export TOKENIZERS_PARALLELISM=false
 export OMP_NUM_THREADS=8
-torchrun --nproc_per_node 2  manager.py train --wandb --fresh_start --project_name "OPT Finetuning 350m events_classification_biotech" --gradient_checkpointing --biotech
+torchrun --nproc_per_node 2  manager.py train --wandb --fresh_start --project_name "OPT Finetuning 350m events_classification_biotech" --checkpoint_dir "OPT-350m-events_classification_biotech" --gradient_checkpointing --biotech

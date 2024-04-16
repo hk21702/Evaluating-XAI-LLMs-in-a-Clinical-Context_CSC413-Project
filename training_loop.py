@@ -69,7 +69,7 @@ def train(args: argparse.Namespace):
         eval_accumulation_steps=250,
         logging_steps=100,
         adam_epsilon=1e-8,
-        save_total_limit=4,
+        save_total_limit=3,
         tf32=True,
     )
 
