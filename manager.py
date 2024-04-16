@@ -36,7 +36,7 @@ def create_args() -> argparse.Namespace:
     parser.add_argument(
         "--checkpoint_dir",
         type=str,
-        default="opt-finetuned-icd9-1.3b",
+        default="opt-finetuned-icd9-350m",
         help="Checkpoint directory to save in",
     )
     parser.add_argument(
@@ -76,13 +76,16 @@ def create_args() -> argparse.Namespace:
 
     # Wandb api key (optional skip wandb usage if not provided)
     parser.add_argument("--wandb_key", type=str, default=None, help="Wandb API key")
+    parser.add_argument(
+        "--wandb", action="store_true", help="Use currently logged in wandb user"
+    )
 
     parser.add_argument("--run_name", type=str, default="run", help="Name of the run")
 
     parser.add_argument(
         "--project_name",
         type=str,
-        default="OPT-Finetuning ICD9 1.3b",
+        default="OPT-Finetuning ICD9 350m",
         help="Name of the run for Wandb",
     )
     parser.add_argument(
@@ -92,7 +95,10 @@ def create_args() -> argparse.Namespace:
     )
 
     parser.add_argument(
-        "--cache_dir", type=str, default="data/cache", help="Dataset cache directory."
+        "--cache_dir",
+        type=str,
+        default="data/cache",
+        help="Dataset cache directory.",
     )
 
     parser.add_argument(
@@ -101,6 +107,10 @@ def create_args() -> argparse.Namespace:
 
     parser.add_argument(
         "--epochs", type=int, default=30, help="Number of epochs to train the model for"
+    )
+
+    parser.add_argument(
+        "--n_trials", type=int, default=15, help="Number of hyperparam search trials"
     )
 
     parser.add_argument(
@@ -113,6 +123,18 @@ def create_args() -> argparse.Namespace:
         help="Run hyperparam search (requires fresh_start)",
     )
 
+    parser.add_argument(
+        "--gradient_checkpointing",
+        action="store_true",
+        help="Use gradient checkpointing",
+    )
+
+    parser.add_argument(
+        "--biotech",
+        action="store_true",
+        help="Use the events_classification_biotech dataset",
+    )
+
     return parser.parse_args()
 
 
@@ -123,9 +145,11 @@ def main():
     args = create_args()
     if args.task == "train":
         os.environ["WANDB_PROJECT"] = args.project_name
-        os.environ["WANDB_API_KEY"] = args.wandb_key
+        if not args.wandb:
+            os.environ["WANDB_API_KEY"] = args.wandb_key
 
         if args.search:
+            print("Warning. Hyperparameter search does not work on distributed setups")
             assert args.fresh_start
         else:
             os.environ["WANDB_LOG_MODEL"] = "checkpoint"

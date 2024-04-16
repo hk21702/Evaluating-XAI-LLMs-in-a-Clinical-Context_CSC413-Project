@@ -19,8 +19,18 @@ from transformers import (
 )
 import wandb
 
-MODEL = "facebook/opt-1.3b"
+MODEL = "facebook/opt-350m"
 MAX_POSITION_EMBEDDINGS = 2048
+
+from dataclasses import dataclass
+
+
+@dataclass
+class Data:
+    dataset: any
+    classes: list
+    class2id: dict
+    id2class: dict
 
 
 def train(args: argparse.Namespace):
@@ -29,31 +39,20 @@ def train(args: argparse.Namespace):
     global class2id
     global id2class
 
-    print("Loading datasets")
-    data_files = {
-        "train": args.train_path,
-        "validation": args.val_path,
-        "test": args.test_path,
-    }
-
-    code_labels = pd.read_csv(args.code_labels)
-    dataset = load_dataset("csv", data_files=data_files, cache_dir=args.cache_dir)
-
-    # Create class dictionaries
-    classes = [class_ for class_ in code_labels["icd_code"] if class_]
-    class2id = {class_: id for id, class_ in enumerate(classes)}
-    id2class = {id: class_ for class_, id in class2id.items()}
-
-    print("Tokenizing datasets. Loading from cache if available.")
     tokenizer = AutoTokenizer.from_pretrained(MODEL, use_fast=True)
 
-    dataset = dataset.map(tokenize, load_from_cache_file=True, batched=True, num_proc=8)
+    if args.biotech:
+        data = load_biotech(tokenizer)
+    else:
+        data = load_mimic(tokenizer, args)
+
+    dataset = data.dataset
+    classes, class2id, id2class = data.classes, data.class2id, data.id2class
 
     create_metrics(args)
 
     # note - save stratedy and evaluation strategy need to match
     training_args = TrainingArguments(
-        auto_find_batch_size=True,
         disable_tqdm=args.disable_tqdm,
         output_dir=args.checkpoint_dir,
         dataloader_num_workers=3,
@@ -61,36 +60,36 @@ def train(args: argparse.Namespace):
         eval_steps=args.save_interval,
         save_strategy="epoch",
         save_steps=args.save_interval,
-        warmup_steps=200,
-        learning_rate=2e-6,
+        learning_rate=0.00007895,
         num_train_epochs=args.epochs,
-        weight_decay=0.01,
+        weight_decay=0.05537,
         load_best_model_at_end=True,
-        per_device_train_batch_size=4,
-        per_device_eval_batch_size=4,
-        gradient_accumulation_steps=2,
-        ddp_find_unused_parameters=False,
+        per_device_train_batch_size=8,
+        per_device_eval_batch_size=8,
         eval_accumulation_steps=250,
         logging_steps=100,
-        adam_epsilon=1e-4,
-        # optim="adafactor",
+        adam_epsilon=1e-8,
         save_total_limit=4,
+        tf32=True,
     )
+
+    if args.gradient_checkpointing:
+        training_args.gradient_checkpointing = True
+        training_args.gradient_checkpointing_kwargs = {"use_reentrant": False}
 
     if args.tiny:
         # Use tiny subset of dataset
-        dataset["train"] = dataset["train"].shard(index=1, num_shards=80)
-        dataset["validation"] = dataset["validation"].shard(index=1, num_shards=150)
+        dataset["train"] = dataset["train"].shard(index=1, num_shards=150)
         dataset["test"] = dataset["test"].shard(index=1, num_shards=150)
         training_args.evaluation_strategy = "epoch"
         training_args.eval_steps = 1
 
     data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
-
-    pprint(f"num_labels: {len(code_labels)}")
-
-    if args.wandb_key:
-        pprint("Using wandb")
+    if args.wandb:
+        pprint("Using wandb with already logged in user")
+        training_args.report_to = ["wandb"]
+    elif args.wandb_key:
+        pprint("Using wandb with specified key")
         wandb.login(key=args.wandb_key)
         training_args.report_to = ["wandb"]
 
@@ -101,7 +100,7 @@ def train(args: argparse.Namespace):
             model_init=model_init,
             args=training_args,
             train_dataset=dataset["train"],
-            eval_dataset=dataset["validation"],
+            eval_dataset=dataset["test"],
             tokenizer=tokenizer,
             compute_metrics=compute_metrics,
             data_collator=data_collator,
@@ -110,7 +109,7 @@ def train(args: argparse.Namespace):
             print("Doing hyperparameter search")
 
             best_run = trainer.hyperparameter_search(
-                n_trials=20,
+                n_trials=args.n_trials,
                 backend="optuna",
                 hp_space=optuna_hp_space,
                 direction="maximize",
@@ -147,9 +146,8 @@ def optuna_hp_space(trial):
 
     return {
         "learning_rate": trial.suggest_float("learning_rate", 1e-6, 1e-4, log=True),
-        "adam_epsilon": trial.suggest_float("adam_epsilon", 1e-7, 0.1, log=True),
+        "adam_epsilon": trial.suggest_float("adam_epsilon", 1e-8, 0.1, log=True),
         "weight_decay": trial.suggest_float("weight_decay", 0, 0.1),
-        "warmup_steps": trial.suggest_int("warmup_steps", 0, 400, step=200),
     }
 
 
@@ -174,20 +172,7 @@ def create_metrics(args):
     clf_metrics = evaluate.combine([f1, precision, recall])
 
 
-def multi_labels_to_ids(labels: list[str]) -> list[float]:
-    ids = [0.0] * len(class2id)  # BCELoss requires float as target type
-    for label in labels:
-        ids[class2id[label]] = 1.0
-    return ids
 
-
-def tokenize(example):
-    result = tokenizer(
-        example["text"], truncation=True, max_length=MAX_POSITION_EMBEDDINGS
-    )
-    result["labels"] = [multi_labels_to_ids(eval(label)) for label in example["labels"]]
-
-    return result
 
 
 def model_init():
@@ -206,9 +191,7 @@ def model_init():
         id2label=id2class,
         label2id=class2id,
         problem_type="multi_label_classification",
-        attn_implementation="flash_attention_2",
         return_unused_kwargs=True,
-        max_position_embeddings=MAX_POSITION_EMBEDDINGS,
     )
 
     if unused_kwargs:
@@ -217,18 +200,8 @@ def model_init():
     model = OPTForSequenceClassification.from_pretrained(
         MODEL,
         config=config,
-        torch_dtype=torch.float16,
-        ignore_mismatched_sizes=True,
     )
 
-    # Cast output to float32 for improved numerical stability
-    class CastOutputToFloat(nn.Sequential):
-        def forward(self, x):
-            return super().forward(x).to(torch.float32)
-
-    model.score = CastOutputToFloat(model.score)
-
-    model.tie_weights()
     model = get_peft_model(model, lora_config)
     model.print_trainable_parameters()
 
@@ -246,6 +219,74 @@ def compute_metrics(p: EvalPrediction):
         predictions=preds, references=p.label_ids, average="micro"
     )
     return result
+
+
+def load_biotech(tokenizer):
+    print("Loading biotech events classification dataset")
+    dataset = load_dataset(
+        "knowledgator/events_classification_biotech", trust_remote_code=True
+    )
+
+    classes = [
+        class_ for class_ in dataset["train"].features["label 1"].names if class_
+    ]
+    class2id = {class_: id for id, class_ in enumerate(classes)}
+    id2class = {id: class_ for class_, id in class2id.items()}
+
+    def preprocess_function(example):
+        text = f"{example['title']}.\n{example['content']}"
+        all_labels = example["all_labels"]
+        labels = [0.0 for i in range(len(classes))]
+        for label in all_labels:
+            label_id = class2id[label]
+            labels[label_id] = 1.0
+
+        example = tokenizer(text, truncation=True, max_length=MAX_POSITION_EMBEDDINGS)
+        example["labels"] = labels
+        return example
+
+    dataset = dataset.map(preprocess_function)
+
+    return Data(dataset, classes, class2id, id2class)
+
+
+def load_mimic(tokenizer, args):
+    print("Loading MIMIC-IV dataset")
+    data_files = {
+        "train": args.train_path,
+        "validation": args.val_path,
+        "test": args.test_path,
+    }
+
+    code_labels = pd.read_csv(args.code_labels)
+    dataset = load_dataset("csv", data_files=data_files, cache_dir=args.cache_dir)
+
+    # Create class dictionaries
+    classes = [class_ for class_ in code_labels["icd_code"] if class_]
+    class2id = {class_: id for id, class_ in enumerate(classes)}
+    id2class = {id: class_ for class_, id in class2id.items()}
+
+    def multi_labels_to_ids(labels: list[str]) -> list[float]:
+        ids = [0.0] * len(class2id)  # BCELoss requires float as target type
+        for label in labels:
+            ids[class2id[label]] = 1.0
+        return ids
+
+    def preprocess_function(example):
+        result = tokenizer(
+            example["text"], truncation=True, max_length=MAX_POSITION_EMBEDDINGS
+        )
+        result["labels"] = [
+            multi_labels_to_ids(eval(label)) for label in example["labels"]
+        ]
+
+        return result
+
+    dataset = dataset.map(
+        preprocess_function, load_from_cache_file=True, batched=True, num_proc=8
+    )
+
+    return Data(dataset, classes, class2id, id2class)
 
 
 if __name__ == "__main__":
