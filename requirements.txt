@@ -16,4 +16,9 @@ evaluate
 swifter
 flash-attn
 peft
+<<<<<<< HEAD
+lime
+scipy
+=======
 optuna
+>>>>>>> d47ac3219de9cb1c7b304d360eb49cf177d883b6
