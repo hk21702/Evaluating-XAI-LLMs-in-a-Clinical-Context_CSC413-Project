@@ -7,4 +7,4 @@
 
 export TOKENIZERS_PARALLELISM=false
 export OMP_NUM_THREADS=8
-torchrun --nproc_per_node 2  manager.py train --wandb_key   --fresh_start --project_name "OPT Finetuning 350m mimic" --gradient_checkpointing --tiny
+torchrun --nproc_per_node 2  manager.py train --wandb --fresh_start --project_name "OPT Finetuning 350m mimic" --gradient_checkpointing --tiny

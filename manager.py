@@ -76,6 +76,9 @@ def create_args() -> argparse.Namespace:
 
     # Wandb api key (optional skip wandb usage if not provided)
     parser.add_argument("--wandb_key", type=str, default=None, help="Wandb API key")
+    parser.add_argument(
+        "--wandb", action="store_true", help="Use currently logged in wandb user"
+    )
 
     parser.add_argument("--run_name", type=str, default="run", help="Name of the run")
 
@@ -127,7 +130,7 @@ def create_args() -> argparse.Namespace:
     )
 
     parser.add_argument(
-        "--events_classification_biotech",
+        "--biotech",
         action="store_true",
         help="Use the events_classification_biotech dataset",
     )
@@ -142,9 +145,11 @@ def main():
     args = create_args()
     if args.task == "train":
         os.environ["WANDB_PROJECT"] = args.project_name
-        os.environ["WANDB_API_KEY"] = args.wandb_key
+        if not args.wandb:
+            os.environ["WANDB_API_KEY"] = args.wandb_key
 
         if args.search:
+            print("Warning. Hyperparameter search does not work on distributed setups")
             assert args.fresh_start
         else:
             os.environ["WANDB_LOG_MODEL"] = "checkpoint"
