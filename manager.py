@@ -36,7 +36,7 @@ def create_args() -> argparse.Namespace:
     parser.add_argument(
         "--checkpoint_dir",
         type=str,
-        default="opt-finetuned-icd9-1.3b",
+        default="opt-finetuned-icd9-350m",
         help="Checkpoint directory to save in",
     )
     parser.add_argument(
@@ -82,7 +82,7 @@ def create_args() -> argparse.Namespace:
     parser.add_argument(
         "--project_name",
         type=str,
-        default="OPT-Finetuning ICD9 1.3b",
+        default="OPT-Finetuning ICD9 350m",
         help="Name of the run for Wandb",
     )
     parser.add_argument(
@@ -92,7 +92,10 @@ def create_args() -> argparse.Namespace:
     )
 
     parser.add_argument(
-        "--cache_dir", type=str, default="data/cache", help="Dataset cache directory."
+        "--cache_dir",
+        type=str,
+        default="data/cache",
+        help="Dataset cache directory.",
     )
 
     parser.add_argument(
@@ -104,6 +107,10 @@ def create_args() -> argparse.Namespace:
     )
 
     parser.add_argument(
+        "--n_trials", type=int, default=15, help="Number of hyperparam search trials"
+    )
+
+    parser.add_argument(
         "--tiny", action="store_true", help="Use a tiny subset of dataset for training"
     )
 
@@ -111,6 +118,12 @@ def create_args() -> argparse.Namespace:
         "--search",
         action="store_true",
         help="Run hyperparam search (requires fresh_start)",
+    )
+
+    parser.add_argument(
+        "--gradient_checkpointing",
+        action="store_true",
+        help="Use gradient checkpointing",
     )
 
     return parser.parse_args()
