@@ -79,8 +79,8 @@ def train(args: argparse.Namespace):
 
     if args.tiny:
         # Use tiny subset of dataset
-        dataset["train"] = dataset["train"].shard(index=1, num_shards=150)
-        dataset["test"] = dataset["test"].shard(index=1, num_shards=150)
+        dataset["train"] = dataset["train"].shard(index=1, num_shards=args.shard)
+        dataset["test"] = dataset["test"].shard(index=1, num_shards=args.shard)
         training_args.evaluation_strategy = "epoch"
         training_args.eval_steps = 1
 

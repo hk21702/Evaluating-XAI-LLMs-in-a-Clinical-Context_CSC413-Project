@@ -118,6 +118,10 @@ def create_args() -> argparse.Namespace:
     )
 
     parser.add_argument(
+        "--shard", type=int, default=150, help="Shard amount for when using tiny. Larger means smaller subset"
+    )
+
+    parser.add_argument(
         "--search",
         action="store_true",
         help="Run hyperparam search (requires fresh_start)",
