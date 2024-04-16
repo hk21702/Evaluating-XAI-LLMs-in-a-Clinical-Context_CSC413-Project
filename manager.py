@@ -126,6 +126,12 @@ def create_args() -> argparse.Namespace:
         help="Use gradient checkpointing",
     )
 
+    parser.add_argument(
+        "--events_classification_biotech",
+        action="store_true",
+        help="Use the events_classification_biotech dataset",
+    )
+
     return parser.parse_args()
 
 
