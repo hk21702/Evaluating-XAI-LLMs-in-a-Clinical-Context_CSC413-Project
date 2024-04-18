@@ -1,11 +1,11 @@
 import argparse
+from dataclasses import dataclass
 from pprint import pprint
 
 import evaluate
 import numpy as np
 import pandas as pd
 import torch
-from torch import nn
 from datasets import load_dataset
 from peft import LoraConfig, TaskType, get_peft_model
 from transformers import (
@@ -17,12 +17,11 @@ from transformers import (
     Trainer,
     TrainingArguments,
 )
+
 import wandb
 
 MODEL = "facebook/opt-350m"
 MAX_POSITION_EMBEDDINGS = 2048
-
-from dataclasses import dataclass
 
 
 @dataclass
@@ -170,9 +169,6 @@ def create_metrics(args):
     )
 
     clf_metrics = evaluate.combine([f1, precision, recall])
-
-
-
 
 
 def model_init():
