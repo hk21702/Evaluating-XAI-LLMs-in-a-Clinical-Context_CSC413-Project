@@ -12,12 +12,17 @@ import torch
 def lime_create_index_arrays(instances, pred_fn, explainer, n_samples=10, k_labels=5):
     """get the explanation for the given instances and generate index arrays for the rationale"""
     indexed_strs = np.array([])
-    # get the index of the longest instance
-    longest_instance = max(instances, key=len)
-    longest_instance = lime.lime_text.IndexedString(longest_instance)
-    padding_len = len(longest_instance.as_np)
+    # get the amount of padding needed by finding the longest instance
+    # unfourtunately the overall instance length doesn't correspond to the indexed string length, so an additional for loop is needed
+    padding_len = 0
     
+    for instance in instances:
+        indexed_str = lime.lime_text.IndexedString(instance)
+        inst_len = len(indexed_str.as_np)
+        if inst_len > padding_len:
+            padding_len = inst_len
     
+    # get the single word list version of instances from LIME
     index_array = None
     for i, instance in enumerate(instances):
         indexed_str = lime.lime_text.IndexedString(instance)
@@ -28,7 +33,8 @@ def lime_create_index_arrays(instances, pred_fn, explainer, n_samples=10, k_labe
         
         # create masked array from map
         exp_map = exp.as_map()
-        # print(exp_map)
+
+        # get the rationalle words
         for label in exp_map.keys():
             for item in exp_map[label]:
                 if index_array is None:
@@ -40,11 +46,11 @@ def lime_create_index_arrays(instances, pred_fn, explainer, n_samples=10, k_labe
         
         # pad and save
         str_as_np = indexed_str.as_np
+        
         padding = np.full((padding_len - len(str_as_np)), [''], dtype=str)
         str_as_np = np.append(str_as_np, padding)
         
         if indexed_strs.size == 0:
-            # pad indexed_str
             indexed_strs = np.array([str_as_np])
         else:
             indexed_strs = np.append(indexed_strs, [str_as_np], axis=0)
