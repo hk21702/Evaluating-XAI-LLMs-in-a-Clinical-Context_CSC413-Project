@@ -7,6 +7,18 @@ Our project focuses on assessing and improving local interpretability method of 
 - [MIMIC-IV](https://physionet.org/content/mimiciv/2.2/) and [MIMIC-IV Note](https://physionet.org/content/mimic-iv-note/2.2/) datasets
 - see requirements.txt
 
+## Faithfulness data processing
+
+- For faithfulness, there are several data processing steps that need to be taken:
+  - First, using your XAI method, split up your input text strings in to the list of words used by the XAI method. The final list structure should be a list of lists, where each sub list contains all of the words in order for one sample.
+  - Next, get the indices for the words used by the XAI methods explanation. These indices should be formatted in to an array as follows:
+    - [
+      [ Indices of corresponding text input sample ],
+      [ Indices of words in text sample ]
+    ]
+  - Next, pass the formatted text instances and the indices to the remove_rationalle_words and remove_other_words functions. These will return the strings with related rationalle words (or all non rationalle words) removed.
+  - Finally, the instances along with the returned arrays from the previous step can be passed to the faithfulness function. Note that remove_rationalle_words and remove_other_words arrays are expected to be in a larger array containing the explanations from all XAI functions
+
 
 ## TODOs
 <ul>
