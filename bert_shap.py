@@ -1,5 +1,6 @@
 import pandas as pd
-from sklearn.externals import joblib
+import pickle
+# from sklearn.externals import joblib
 from transformers import AutoTokenizer, AutoModel, AutoConfig
 import torch
 from datasets import load_dataset
@@ -7,9 +8,6 @@ from lime.lime_text import LimeTextExplainer
 import torch.nn.functional as F
 import shap
 from transformers import Pipeline
-from transformers_interpret import MultiLabelClassificationExplainer
-
-from __future__ import print_function
 import os 
 
 torch.cuda.empty_cache()
@@ -19,6 +17,7 @@ TRAIN_BATCH_SIZE = 2
 VALID_BATCH_SIZE = 2
 TEST_BATCH_SIZE = 2
 data_dir = "output/"
+destination_dir = "/"
 print(device)
 
 
@@ -154,7 +153,7 @@ masker = shap.maskers.Text(pipeline.tokenizer)
 explainer = shap.Explainer(pipeline, masker)
 shap_input = dataset['test']['text'][:1]
 shap_values = explainer(shap_input)
-filename = '.\shap_explainer.bz2'
-joblib.dump(shap_values, filename=filename, compress=('bz2', 9))
-
+filename = os.path.join(destination_dir,"shap_explainer.pkl'")
+with open(filename, "wb") as f:
+    pickle.dump(shap_values, f)
 

@@ -6,4 +6,4 @@
 #SBATCH --gres=gpu:1
 
 export OMP_NUM_THREADS=8
-torchrun bert_shap.py
+python bert_shap.py
