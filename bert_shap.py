@@ -81,8 +81,6 @@ dataset = load_dataset("csv", data_files=data_files)
 dataset = dataset.map(tokenizer_wrapper.tokenize_function, batched=True, num_proc=1)
 dataset = dataset.with_format("torch")
 print("dataset loaded")
-=======
->>>>>>> 0047235e8bd89d190923a758b15ec5db213045c0
 
 class BERTClass(torch.nn.Module):
     def __init__(self):
