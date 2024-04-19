@@ -13,27 +13,27 @@ import os
 torch.cuda.empty_cache()
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # device = "cpu"
-TRAIN_BATCH_SIZE = 2
-VALID_BATCH_SIZE = 2
-TEST_BATCH_SIZE = 2
 data_dir = "output/"
-destination_dir = "/"
+destination_dir = "./"
 print(device)
 
 
 test_short_path = "data/test_10_top50_short.csv"
 labels_10_top50 = pd.read_csv('data/icd10_codes_top50.csv')
 code_labels_10 = pd.read_csv("data/icd10_codes.csv")
+print("dataset loaded?")
+
+# Model Parameters
+MAX_LEN = 512
+MODEL = "emilyalsentzer/Bio_ClinicalBERT"
+CKPT = os.path.join(data_dir,"best_model_state.bin")
 
 # Create class dictionaries
 classes = [class_ for class_ in code_labels_10["icd_code"] if class_]
 class2id = {class_: id for id, class_ in enumerate(classes)}
 id2class = {id: class_ for class_, id in class2id.items()}
 
-# Model Parameters
-MAX_LEN = 512
-MODEL = "emilyalsentzer/Bio_ClinicalBERT"
-CKPT = os.path.join(data_dir,"best_model_state.bin")
+print("classes")
 
 config, unused_kwargs = AutoConfig.from_pretrained(
     MODEL,
@@ -46,7 +46,7 @@ config, unused_kwargs = AutoConfig.from_pretrained(
 
 tokenizer_bert = AutoTokenizer.from_pretrained(MODEL)
 model_bert = AutoModel.from_pretrained(MODEL, config=config, cache_dir='./model_ckpt/')
-
+print("bert model and tokenizer initialized")
 class TokenizerWrapper:
     def __init__(self, tokenizer, length, classes):
         self.tokenizer = tokenizer
@@ -68,7 +68,7 @@ class TokenizerWrapper:
             padding = 'max_length',
             truncation = True,
             return_tensors='pt'
-        )
+        ).to(device)
         result["label"] = torch.tensor([self.multi_labels_to_ids(eval(label)) for label in example["label"]])
         return result
         
@@ -80,12 +80,7 @@ tokenizer_wrapper = TokenizerWrapper(tokenizer_bert, MAX_LEN, classes)
 dataset = load_dataset("csv", data_files=data_files)
 dataset = dataset.map(tokenizer_wrapper.tokenize_function, batched=True, num_proc=1)
 dataset = dataset.with_format("torch")
-
-test_data_loader = torch.utils.data.DataLoader(dataset['test'], 
-    batch_size=TEST_BATCH_SIZE,
-    shuffle=False,
-    num_workers=0
-)
+print("dataset loaded")
 
 class BERTClass(torch.nn.Module):
     def __init__(self):
@@ -145,13 +140,16 @@ class BERT_ICD10_Pipeline(Pipeline):
             label = self.model.config.id2label[i]
             score = prob
             output.append({"label": label, "score": score})
-        # print(output)
+        
         return output
-    
+
 pipeline = BERT_ICD10_Pipeline(model=model_bert, tokenizer=tokenizer_bert, device = device)
+print("pipeline initialized")
 masker = shap.maskers.Text(pipeline.tokenizer)
 explainer = shap.Explainer(pipeline, masker)
-shap_input = dataset['test']['text'][:1]
+# shap_input = dataset['test']['text'][:1]
+print("computing shap")
+shap_input = ['a test']
 shap_values = explainer(shap_input)
 filename = os.path.join(destination_dir,"shap_explainer.pkl'")
 with open(filename, "wb") as f:
