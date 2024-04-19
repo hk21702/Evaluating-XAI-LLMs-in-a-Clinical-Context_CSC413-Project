@@ -6,8 +6,9 @@ import lime.explanation
 import lime.lime_text
 import numpy as np
 import torch
+import gc
 
-
+BATCH_SIZE = 8
 
 def lime_create_index_arrays(instances, pred_fn, explainer, n_samples=10, k_labels=5):
     """get the explanation for the given instances and generate index arrays for the rationale"""
@@ -113,7 +114,23 @@ def calculate_comprehensiveness(predictions, instances_rationale_removed, model,
     
     # pass the instances through the model - get the predictions
     torch.cuda.empty_cache()
-    predictions_rationale_removed =  predictor_func(instances_rationale_removed, model, tokenizer)
+    predictions_rationale_removed = None
+    
+    for i in range(0, len(instances_rationale_removed), BATCH_SIZE):
+        end_range = i + BATCH_SIZE if i + BATCH_SIZE < len(instances_rationale_removed) else len(instances_rationale_removed)
+        
+        instances_batch = instances_rationale_removed[i:end_range]
+        output_batch = predictor_func(instances_batch, model, tokenizer)
+        
+        if i == 0:
+            predictions_rationale_removed = output_batch
+        else:
+            predictions_rationale_removed = np.concatenate((predictions_rationale_removed, output_batch), axis=0)
+            
+        gc.collect()
+            
+    
+    
     print("Predictions ratonale removed: ", predictions_rationale_removed)
     
     # calculate the euclidean distance between the probability of the predicted class and sum over multi labels
@@ -133,12 +150,33 @@ def calculate_sufficency(predictions, instances_other_removed, model, tokenizer,
 
     Args:
         predictions (np.array(np.array(float))): List of predictions made with the base instances (no words removed) using the given model.
-        instances_rationale_removed (np.array(np.array(indices))): List of rationales to compute the sufficency for. This is formatted as a list of numpy arrays, where each array acts as a mask, where a 1 indicates that the word is a rationale word.
+        instances_other_removed (np.array(np.array(indices))): List of rationales to compute the sufficency for. This is formatted as a list of numpy arrays, where each array acts as a mask, where a 1 indicates that the word is a rationale word.
         model (model): The model to compute the sufficency for.
     """
     print("Calculating Sufficiency")
     torch.cuda.empty_cache()
-    predictions_other_removed = predictor_func(instances_other_removed, model, tokenizer)
+    
+    predictions_other_removed = None
+    
+    for i in range(0, len(instances_other_removed), BATCH_SIZE):
+        end_range = i + BATCH_SIZE if i + BATCH_SIZE < len(instances_other_removed) else len(instances_other_removed)
+        
+        print("end range: ", end_range)
+        print(i)
+        
+        instances_batch = instances_other_removed[i:end_range]
+        print(len(instances_batch))
+
+        output_batch = predictor_func(instances_batch, model, tokenizer)
+        
+        if i == 0:
+            predictions_other_removed = output_batch
+        else:
+            predictions_other_removed = np.concatenate((predictions_other_removed, output_batch), axis=0)
+            
+        gc.collect()
+            
+    # predictions_other_removed = predictor_func(instances_other_removed, model, tokenizer)
     print("Predicitons other removed: ", predictions_other_removed)
     
     # calculate the euclidean distance between the predictions and the predictions with the other words removed
@@ -163,7 +201,26 @@ def calculate_faithfulness(instances, instances_rationalle_removed, instances_ot
         model (model): The model to compute the faithfulness for.
     """
     # generate predictions
-    predictions =  predictor_func(instances, model, tokenizer)
+    redictions = None
+    for i in range(0, len(instances), BATCH_SIZE):
+        end_range = i + BATCH_SIZE if i + BATCH_SIZE < len(instances) else len(instances)
+        
+        print("end range: ", end_range)
+        print(i)
+        
+        instances_batch = instances[i:end_range]
+        print(len(instances_batch))
+        # print(instances_batch)
+        output_batch = predictor_func(instances_batch, model, tokenizer)
+        
+        if i == 0:
+            predictions = output_batch
+        else:
+            predictions = np.concatenate((predictions, output_batch), axis=0)
+            
+        gc.collect()
+        
+    # predictions =  predictor_func(instances, model, tokenizer)
     faithfulness_calc = []
     
     # for each method, calculate the sufficency and comprehensiveness
