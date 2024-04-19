@@ -126,7 +126,7 @@ import importlib
 importlib.reload(faithfulness)
 
 samples_start = 0
-samples_end = 50
+samples_end = 3
 
 instances = untokenized_dataset["train"][samples_start:samples_end]["text"]
 # print(len(instances))
@@ -135,6 +135,10 @@ instances = untokenized_dataset["train"][samples_start:samples_end]["text"]
 explainer = LimeTextExplainer(class_names=classes, bow=False)
 
 indexed_text, index_array_rationalle = faithfulness.lime_create_index_arrays(instances, predictor_opt, explainer)
+
+# faithfulness.save_indexed_strs(indexed_text,  index_array_rationalle, "test.npz")
+# indexed_text, index_array_rationalle = faithfulness.load_indexed_strs("test.npz")
+
 # print(indexed_text)
 # print(index_array_rationalle)
 
