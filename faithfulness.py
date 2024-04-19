@@ -11,7 +11,15 @@ import gc
 BATCH_SIZE = 8
 
 def lime_create_index_arrays(instances, pred_fn, explainer, n_samples=10, k_labels=5):
-    """get the explanation for the given instances and generate index arrays for the rationale"""
+    """create the indexed strings and index array for the LIME explainer that can then be processed for the faithfulness test
+    
+    Args:
+        instances (list(string)): list of instances to create the indexed strings and index array for
+        pred_fn (function): function to get the predictions from the model
+        explainer (LimeTextExplainer): the explainer to use to get the explanation
+        n_samples (int, optional): number of samples to use for the LIME explainer. Defaults to 10.
+        k_labels (int, optional): number of labels to explain. Defaults to 5.
+    """
     indexed_strs = np.array([])
     # get the amount of padding needed by finding the longest instance
     # unfourtunately the overall instance length doesn't correspond to the indexed string length, so an additional for loop is needed
@@ -61,8 +69,42 @@ def lime_create_index_arrays(instances, pred_fn, explainer, n_samples=10, k_labe
     
     return indexed_strs, index_array
 
+def save_indexed_strs(indexed_strs, index_array, file_path):
+    """Saves the indexed strings and index array to a npz file
+
+    Args:
+        indexed_strs (list[list[string]]): list of instances with words stored as separate strings in a list
+        index_array (list[list[int]]): list of indexes storing the explanation for each string
+        file_path (string): path to save the npz file
+    """
+    # save the indexed strings and index array to a json file
+    np.savez(file_path, indexed_strs=indexed_strs, index_array=index_array)
+    
+    
+def load_indexed_strs(file_path):
+    """Loads the indexed strings and index array from a npz file
+
+    Args:
+        file_path (string): path to the npz file to load
+    """
+    # load the indexed strings and index array from a json file
+    with np.load(file_path) as data:
+        indexed_strs = data['indexed_strs']
+        index_array = data['index_array']
+        
+    return indexed_strs, index_array
 
 def remove_rationale_words(instances, rationales, join=True):
+    """remove the rationale words from the instances
+
+    Args:
+        instances (list(list(string))): list of instances to remove the rationale words from. Each instance is a list of words.
+        rationales (list(list(int))): list of rationales to remove from the instances. Each rationale is a list of indexes, where the first index is the instance index and the second index is the word index.
+        join (bool, optional): automatically joins the returned string list for the lists with rationale words removed. Defaults to True.
+
+    Returns:
+        list(string) (join True) or list(list(string)) (join False) : list of instances with the rationale words removed. Each instance is a list of words or a string.
+    """
     inst_rationale_removed = copy.deepcopy(instances)
     
     rationales_mask = np.zeros(instances.shape, dtype=bool)
@@ -84,6 +126,16 @@ def remove_rationale_words(instances, rationales, join=True):
 
     
 def remove_other_words(instances, rationales, join=True):
+    """remove all words that are not in the rationale from the instances
+
+    Args:
+        instances (list(list(string))): list of instances to remove the non rationale words from. Each instance is a list of words.
+        rationales (list(list(int))): list of rationales to remove from the instances. Each rationale is a list of indexes, where the first index is the instance index and the second index is the word index.
+        join (bool, optional): automatically joins the returned string list for the lists with non rationale words removed. Defaults to True.
+
+    Returns:
+        list(string) (join True) or list(list(string)) (join False) : list of instances with all non rationale words removed. Each instance is a list of words or a string.
+    """
     inst_other_removed = copy.deepcopy(instances)
     
     # create version of index array where all indexes are added that are not in the rationalle
@@ -106,8 +158,10 @@ def calculate_comprehensiveness(predictions, instances_rationale_removed, model,
 
     Args:
         predictions (np.array(np.array(float))): List of predictions made with the base instances (no words removed) using the given model.
-        instances_rationale_removed (np.array(np.array(word))): List of rationales to compute the comprehensiveness for. This is formatted as a list of numpy arrays, where each array is an array of words.
+        instances_rationale_removed (np.array(np.array(string))): List of rationales to compute the comprehensiveness for. This is formatted as a np array of strings.
         model (model): The model to compute the comprehensiveness for.
+        tokenizer (tokenizer): The tokenizer to use for the model.
+        predictor_func (function): The function to use to get the predictions from the model.
     """
     print("Calculating Comprehensiveness")
     
@@ -146,8 +200,10 @@ def calculate_sufficency(predictions, instances_other_removed, model, tokenizer,
 
     Args:
         predictions (np.array(np.array(float))): List of predictions made with the base instances (no words removed) using the given model.
-        instances_other_removed (np.array(np.array(indices))): List of rationales to compute the sufficency for. This is formatted as a list of numpy arrays, where each array acts as a mask, where a 1 indicates that the word is a rationale word.
+        instances_other_removed (np.array(string)): List of rationales to compute the sufficency for. This is formatted as a list of strings
         model (model): The model to compute the sufficency for.
+        tokenizer (tokenizer): The tokenizer to use for the model.
+        predictor_func (function): The function to use to get the predictions from the model.
     """
     print("Calculating Sufficiency")
     torch.cuda.empty_cache()
@@ -191,10 +247,12 @@ def calculate_faithfulness(instances, instances_rationalle_removed, instances_ot
     """Calculate the faithfulness of the rationales
 
     Args:
-        instances (numpy(numpy(string))): List of instances to compute the faithfulness for. This is formatted as a list of numpy arrays of words.
-        instances_rationalle_removed (numpy(numpy(numpy(int)))): List of rationales to compute the faithfulness for. This is formatted as a list of numpy arrays, where each array acts as a mask, where a 1 indicates that the word is a rationale word. Each list is provided by one interpretability method.
-        instances_other_removed (numpy(numpy(int))): List of instances with all non rationale words removed to compute the faithfulness for. This is formatted as a list of numpy arrays, where each array acts as a mask, where a 1 indicates that the word is not a rationale word. Each list is provided by one interpretability method.
+        instances (numpy(numpy(string))): list of instances to compute the faithfulness for. This is formatted as a list of numpy arrays of words.
+        instances_rationalle_removed (np.array(string)): list of strings with rationalle words removed. This is formatted as a np array of strings.
+        instances_other_removed (np.array(string)): list of instances with all non rationale words removed to compute the faithfulness for. This is formatted as a np array of strings.
         model (model): The model to compute the faithfulness for.
+        tokenizer (tokenizer): The tokenizer to use for the model.
+        predictor_func (function): The function to use to get the predictions from the model.
     """
     # generate predictions
     redictions = None
