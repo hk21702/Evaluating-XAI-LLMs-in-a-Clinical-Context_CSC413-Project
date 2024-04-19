@@ -110,21 +110,26 @@ def remove_rationale_words(instances, rationales, join=True, tokenized=False):
     
     # TODO: add handling for tokenized data. This will involves masking and editing the inputs key in the dictionary rather than the whole input as it done for 
     # non tokenized inputs
-    
-    rationales_mask = np.zeros(instances.shape, dtype=bool)
-    
-    # set the values of the rational mask to true based on rationales in a vectorized manner
-    # the rationales are in the format [[instance_index_1, instance_index_2, ...], [word_index_1, word_index_2, ...]]
-    rationales_mask[rationales[0], rationales[1]] = True
-    
-    # print(rationales_mask)
-    
-    # remove the rationale words from the instance in a vectorized manner. The rationale words are a mask, w
-    # do this for every instance at the same time using numpy, this is faster than looping through each instance. do not use a list comprehension here
-    inst_rationale_removed = np.where(rationales_mask, " ", instances)
-    
-    if join:
-        inst_rationale_removed = [''.join(inst_rationale_removed[i].tolist()) for i in range(len(inst_rationale_removed))]
+    if tokenized == True:
+        rationales_mask = np.zeros(instances['input_ids'].numpy().shape, dtype=bool)
+        rationales_mask[rationales[0], rationales[1]] = True
+        
+        inst_rationale_removed['input_ids'] = torch.from_numpy(np.delete(inst_rationale_removed['input_ids'].numpy(), np.where(rationales_mask), axis=1))
+    else:
+        rationales_mask = np.zeros(instances.shape, dtype=bool)
+        
+        # set the values of the rational mask to true based on rationales in a vectorized manner
+        # the rationales are in the format [[instance_index_1, instance_index_2, ...], [word_index_1, word_index_2, ...]]
+        rationales_mask[rationales[0], rationales[1]] = True
+        
+        # print(rationales_mask)
+        
+        # remove the rationale words from the instance in a vectorized manner. The rationale words are a mask, w
+        # do this for every instance at the same time using numpy, this is faster than looping through each instance. do not use a list comprehension here
+        inst_rationale_removed = np.where(rationales_mask, " ", instances)
+        
+        if join:
+            inst_rationale_removed = [''.join(inst_rationale_removed[i].tolist()) for i in range(len(inst_rationale_removed))]
         
     return inst_rationale_removed
 
@@ -144,19 +149,24 @@ def remove_other_words(instances, rationales, join=True, tokenized=False):
     
     # TODO: add handling for tokenized data. This will involves masking and editing the inputs key in the dictionary rather than the whole input as it done for 
     # non tokenized inputs
+    if tokenized == True:
+        inverse_rationales_mask = np.ones(instances['input_ids'].numpy().shape, dtype=bool)
+        inverse_rationales_mask[rationales[0], rationales[1]] = False
+        
+        inst_other_removed['input_ids'] = torch.from_numpy(np.delete(inst_other_removed['input_ids'].numpy(), np.where(rationales_mask), axis=1))
+    else:
+        # create version of index array where all indexes are added that are not in the rationalle
+        inverse_rationales_mask = np.ones(instances.shape, dtype=bool)
+        inverse_rationales_mask[rationales[0], rationales[1]] = False
     
-    # create version of index array where all indexes are added that are not in the rationalle
-    inverse_rationales_mask = np.ones(instances.shape, dtype=bool)
-    inverse_rationales_mask[rationales[0], rationales[1]] = False
-    
-    # remove the rationale words from the instance in a vectorized manner
-    # do this for every instance at the same time using numpy, this is faster than looping through each instance. do not use a list comprehension here
-    # replace each word with "" so that the length of the instance stays the same
-    inst_other_removed = np.where(inverse_rationales_mask, " ", instances)
-    
-    if join:
-        inst_other_removed = [''.join(inst_other_removed[i].tolist()) for i in range(len(inst_other_removed))]
-    
+        # remove the rationale words from the instance in a vectorized manner
+        # do this for every instance at the same time using numpy, this is faster than looping through each instance. do not use a list comprehension here
+        # replace each word with "" so that the length of the instance stays the same
+        inst_other_removed = np.where(inverse_rationales_mask, " ", instances)
+        
+        if join:
+            inst_other_removed = [''.join(inst_other_removed[i].tolist()) for i in range(len(inst_other_removed))]
+        
     return inst_other_removed
 
 
