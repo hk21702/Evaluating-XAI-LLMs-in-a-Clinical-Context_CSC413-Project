@@ -153,7 +153,7 @@ def remove_other_words(instances, rationales, join=True, tokenized=False):
         inverse_rationales_mask = np.ones(instances['input_ids'].numpy().shape, dtype=bool)
         inverse_rationales_mask[rationales[0], rationales[1]] = False
         
-        inst_other_removed['input_ids'] = torch.from_numpy(np.delete(inst_other_removed['input_ids'].numpy(), np.where(rationales_mask), axis=1))
+        inst_other_removed['input_ids'] = torch.from_numpy(np.delete(inst_other_removed['input_ids'].numpy(), np.where(inverse_rationales_mask), axis=1))
     else:
         # create version of index array where all indexes are added that are not in the rationalle
         inverse_rationales_mask = np.ones(instances.shape, dtype=bool)
