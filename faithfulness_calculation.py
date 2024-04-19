@@ -95,7 +95,7 @@ from time import time
 explainer = LimeTextExplainer(class_names=classes, bow=False)
 
 def predictor_opt(texts):
-    print(len(texts))
+    # print(len(texts))
     tk = tokenizer(texts, return_tensors="pt",truncation=True, padding=True, max_length=MAX_POSITION_EMBEDDINGS).to(device)
     outputs = model(**tk)
     tensor_logits = outputs[0]
@@ -106,7 +106,7 @@ def predictor_opt(texts):
 
 # used by the faithfulness function
 def predictor_model(texts, model, tokenizer):
-    print(len(texts))
+    # print(len(texts))
     tk = tokenizer(texts, return_tensors="pt",truncation=True, padding=True, max_length=MAX_POSITION_EMBEDDINGS).to(device)
     outputs = model(**tk)
     tensor_logits = outputs[0]
@@ -129,7 +129,7 @@ samples_start = 0
 samples_end = 50
 
 instances = untokenized_dataset["train"][samples_start:samples_end]["text"]
-print(len(instances))
+# print(len(instances))
 
 # print(instances)
 explainer = LimeTextExplainer(class_names=classes, bow=False)
@@ -154,5 +154,5 @@ others_removed = faithfulness.remove_other_words(indexed_text, index_array_ratio
 # the extra list is needed since the function expects a list of instances each coming from a different interpretability method
 # testing multi input by duplicating the arrays, don't actually do this
 ind, faith = faithfulness.calculate_faithfulness(instances, [rationalle_removed, rationalle_removed], [others_removed, others_removed], model, tokenizer, predictor_model)
-print(ind)
-print(faith)
+# print(ind)
+# print(faith)

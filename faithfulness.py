@@ -31,7 +31,6 @@ def lime_create_index_arrays(instances, pred_fn, explainer, n_samples=10, k_labe
         with torch.no_grad():
             exp = explainer.explain_instance(instances[0], pred_fn, num_samples=n_samples, top_labels=k_labels)
         
-        
         # create masked array from map
         exp_map = exp.as_map()
 
@@ -72,7 +71,7 @@ def remove_rationale_words(instances, rationales, join=True):
     # the rationales are in the format [[instance_index_1, instance_index_2, ...], [word_index_1, word_index_2, ...]]
     rationales_mask[rationales[0], rationales[1]] = True
     
-    print(rationales_mask)
+    # print(rationales_mask)
     
     # remove the rationale words from the instance in a vectorized manner. The rationale words are a mask, w
     # do this for every instance at the same time using numpy, this is faster than looping through each instance. do not use a list comprehension here
@@ -130,19 +129,16 @@ def calculate_comprehensiveness(predictions, instances_rationale_removed, model,
         gc.collect()
             
     
-    
-    print("Predictions ratonale removed: ", predictions_rationale_removed)
-    
     # calculate the euclidean distance between the probability of the predicted class and sum over multi labels
     # logits are the classification scores for the opt model
     # confidence_dif = predictions.logits - predictions_rationale_removed.logits
     confidence_dif = predictions - predictions_rationale_removed
-    print("Confidence Dif: ", confidence_dif)
+    # print("Confidence Dif: ", confidence_dif)
     confidence_dif = np.linalg.norm(confidence_dif, axis=-1)
-    print("Confidence Dif - eudclidean distance: ", confidence_dif)
+    # print("Confidence Dif - eudclidean distance: ", confidence_dif)
     
     # return the average confidence difference over the samples
-    return np.mean(confidence_dif, axis=-1)
+    return np.mean(confidence_dif, axis=-1), confidence_dif
 
 
 def calculate_sufficency(predictions, instances_other_removed, model, tokenizer, predictor_func):
@@ -161,11 +157,11 @@ def calculate_sufficency(predictions, instances_other_removed, model, tokenizer,
     for i in range(0, len(instances_other_removed), BATCH_SIZE):
         end_range = i + BATCH_SIZE if i + BATCH_SIZE < len(instances_other_removed) else len(instances_other_removed)
         
-        print("end range: ", end_range)
-        print(i)
+        # print("end range: ", end_range)
+        # print(i)
         
         instances_batch = instances_other_removed[i:end_range]
-        print(len(instances_batch))
+        # print(len(instances_batch))
 
         output_batch = predictor_func(instances_batch, model, tokenizer)
         
@@ -177,18 +173,18 @@ def calculate_sufficency(predictions, instances_other_removed, model, tokenizer,
         gc.collect()
             
     # predictions_other_removed = predictor_func(instances_other_removed, model, tokenizer)
-    print("Predicitons other removed: ", predictions_other_removed)
+    # print("Predicitons other removed: ", predictions_other_removed)
     
     # calculate the euclidean distance between the predictions and the predictions with the other words removed
     # logits are the classification scores
     # confidence_dif = predictions.logits - predictions_other_removed.logits
     confidence_dif = predictions - predictions_other_removed
-    print("Confidence Dif: ", confidence_dif)
+    # print("Confidence Dif: ", confidence_dif)
     confidence_dif = np.linalg.norm(confidence_dif, axis=-1)
-    print("Confidence Dif - eudclidean distance: ", confidence_dif)
+    # print("Confidence Dif - eudclidean distance: ", confidence_dif)
     
     # return the average confidence difference
-    return np.mean(confidence_dif, axis=-1)
+    return np.mean(confidence_dif, axis=-1), confidence_dif
     
     
 def calculate_faithfulness(instances, instances_rationalle_removed, instances_other_removed, model, tokenizer, predictor_func):
@@ -205,11 +201,8 @@ def calculate_faithfulness(instances, instances_rationalle_removed, instances_ot
     for i in range(0, len(instances), BATCH_SIZE):
         end_range = i + BATCH_SIZE if i + BATCH_SIZE < len(instances) else len(instances)
         
-        print("end range: ", end_range)
-        print(i)
-        
         instances_batch = instances[i:end_range]
-        print(len(instances_batch))
+        # print(len(instances_batch))
         # print(instances_batch)
         output_batch = predictor_func(instances_batch, model, tokenizer)
         
@@ -227,16 +220,34 @@ def calculate_faithfulness(instances, instances_rationalle_removed, instances_ot
     for i, instance in enumerate(instances_rationalle_removed):
         print("Currently interpreting instance: ", i)
         
-        print(instances_rationalle_removed[i])
-        sufficency = calculate_sufficency(predictions, instances_rationalle_removed[i], model, tokenizer, predictor_func)
-        print("Sufficency for iteration: ", sufficency)
-        
-        comprehensiveness = calculate_comprehensiveness(predictions, instances_other_removed[i], model, tokenizer, predictor_func)
-        print("Comprehensiveness for iteration: ", comprehensiveness)
+        sufficency, suf_list = calculate_sufficency(predictions, instances_rationalle_removed[i], model, tokenizer, predictor_func)
+        comprehensiveness, comp_list = calculate_comprehensiveness(predictions, instances_other_removed[i], model, tokenizer, predictor_func)
         
         # calculate faithfulness
         faithfulness = sufficency * comprehensiveness
+        
+        print()
+        print('-- Metrics -------------------------------------------------------------')
+        print()
+        
+        print()
         print("Faithfulness for iteration: ", faithfulness)
+        print("Comprehensiveness for iteration: ", comprehensiveness)
+        print("Sufficency for iteration: ", sufficency)
+        print()
+        
+        print()
+        print("Comprehensiveness Median: ", np.median(comp_list, axis=-1))
+        print("Comprehensiveness q1 (25% percentile): ", np.quantile(comp_list, 0.25, axis=-1))
+        print("Comprehensiveness q3 (75% percentile): ", np.quantile(comp_list, 0.75, axis=-1))
+        print()
+        
+        print()
+        print("Sufficency Median: ", np.median(suf_list, axis=-1))
+        print("Sufficency q1 (25% percentile): ", np.quantile(suf_list, 0.25, axis=-1))
+        print("Sufficency q3 (75% percentile): ", np.quantile(suf_list, 0.75, axis=-1))
+        print()
+        
         faithfulness_calc.append(faithfulness)
     
     # return the minimum index of the faithfulness_calc to get the best method
