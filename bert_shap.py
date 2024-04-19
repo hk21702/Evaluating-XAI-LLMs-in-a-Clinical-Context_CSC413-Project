@@ -147,21 +147,33 @@ pipeline = BERT_ICD10_Pipeline(model=model_bert, tokenizer=tokenizer_bert, devic
 print("pipeline initialized")
 masker = shap.maskers.Text(pipeline.tokenizer)
 explainer = shap.Explainer(pipeline, masker)
-# shap_input = dataset['test']['text'][:1]
+shap_input = dataset['test']['text'][:50]
 print("computing shap")
-shap_input = ['a test']
-shap_values = explainer(shap_input)
+# shap_input = ['a test']
+shap_values = explainer(
+        shap_input,
+        batch_size=5,
+        outputs=shap.Explanation.argsort.flip[:5]
+        )
+
+print(shap_values)
+
 # filename = os.path.join(destination_dir, "shap_explainer_batch_5")
 # with open(filename, "wb") as f:
 #     pickle.dump(shap_values, f)
 
-shap_df = pd.DataFrame(shap_values)
-shap_df.to_parquet('shap_explainer_batch_1.parquet', compression='gzip')
+# shap_df = pd.DataFrame(shap_values)
+# shap_df.to_parquet('shap_explainer_batch_1.parquet', compression='gzip')
 
 # Test pickle file
 # file = open("./shap_explainer_batch_5", "rb")
 # data = pickle.load(file)
 # print(data)
 
-loaded_shap_df = pd.read_parquet('shap_explainer_batch_1.parquet')
-print(loaded_shap_df)
+# loaded_shap_df = pd.read_parquet('shap_explainer_batch_1.parquet')
+# print(loaded_shap_df)
+
+
+
+
+
