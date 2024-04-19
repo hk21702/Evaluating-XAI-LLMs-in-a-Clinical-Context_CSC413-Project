@@ -25,6 +25,7 @@ def lime_create_index_arrays(instances, pred_fn, explainer, n_samples=10, k_labe
     # unfourtunately the overall instance length doesn't correspond to the indexed string length, so an additional for loop is needed
     padding_len = 0
     
+    # i originally didn't realize padding was an option on the tokenizer so we can probably remove this later
     for instance in instances:
         indexed_str = lime.lime_text.IndexedString(instance)
         inst_len = len(indexed_str.as_np)
@@ -94,7 +95,7 @@ def load_indexed_strs(file_path):
         
     return indexed_strs, index_array
 
-def remove_rationale_words(instances, rationales, join=True):
+def remove_rationale_words(instances, rationales, join=True, tokenized=False):
     """remove the rationale words from the instances
 
     Args:
@@ -106,6 +107,9 @@ def remove_rationale_words(instances, rationales, join=True):
         list(string) (join True) or list(list(string)) (join False) : list of instances with the rationale words removed. Each instance is a list of words or a string.
     """
     inst_rationale_removed = copy.deepcopy(instances)
+    
+    # TODO: add handling for tokenized data. This will involves masking and editing the inputs key in the dictionary rather than the whole input as it done for 
+    # non tokenized inputs
     
     rationales_mask = np.zeros(instances.shape, dtype=bool)
     
@@ -125,7 +129,7 @@ def remove_rationale_words(instances, rationales, join=True):
     return inst_rationale_removed
 
     
-def remove_other_words(instances, rationales, join=True):
+def remove_other_words(instances, rationales, join=True, tokenized=False):
     """remove all words that are not in the rationale from the instances
 
     Args:
@@ -137,6 +141,9 @@ def remove_other_words(instances, rationales, join=True):
         list(string) (join True) or list(list(string)) (join False) : list of instances with all non rationale words removed. Each instance is a list of words or a string.
     """
     inst_other_removed = copy.deepcopy(instances)
+    
+    # TODO: add handling for tokenized data. This will involves masking and editing the inputs key in the dictionary rather than the whole input as it done for 
+    # non tokenized inputs
     
     # create version of index array where all indexes are added that are not in the rationalle
     inverse_rationales_mask = np.ones(instances.shape, dtype=bool)
