@@ -1,6 +1,5 @@
 import pandas as pd
 import pickle
-# from sklearn.externals import joblib
 from transformers import AutoTokenizer, AutoModel, AutoConfig
 import torch
 from datasets import load_dataset
@@ -9,6 +8,7 @@ import torch.nn.functional as F
 import shap
 from transformers import Pipeline
 import os 
+import numpy
 
 torch.cuda.empty_cache()
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -80,7 +80,10 @@ tokenizer_wrapper = TokenizerWrapper(tokenizer_bert, MAX_LEN, classes)
 dataset = load_dataset("csv", data_files=data_files)
 dataset = dataset.map(tokenizer_wrapper.tokenize_function, batched=True, num_proc=1)
 dataset = dataset.with_format("torch")
+<<<<<<< HEAD
 print("dataset loaded")
+=======
+>>>>>>> 0047235e8bd89d190923a758b15ec5db213045c0
 
 class BERTClass(torch.nn.Module):
     def __init__(self):
@@ -151,7 +154,17 @@ explainer = shap.Explainer(pipeline, masker)
 print("computing shap")
 shap_input = ['a test']
 shap_values = explainer(shap_input)
-filename = os.path.join(destination_dir,"shap_explainer.pkl'")
-with open(filename, "wb") as f:
-    pickle.dump(shap_values, f)
+# filename = os.path.join(destination_dir, "shap_explainer_batch_5")
+# with open(filename, "wb") as f:
+#     pickle.dump(shap_values, f)
 
+shap_df = pd.DataFrame(shap_values)
+shap_df.to_parquet('shap_explainer_batch_1.parquet', compression='gzip')
+
+# Test pickle file
+# file = open("./shap_explainer_batch_5", "rb")
+# data = pickle.load(file)
+# print(data)
+
+loaded_shap_df = pd.read_parquet('shap_explainer_batch_1.parquet')
+print(loaded_shap_df)
