@@ -114,7 +114,9 @@ def remove_rationale_words(instances, rationales, join=True, tokenized=False):
         rationales_mask = np.zeros(instances['input_ids'].numpy().shape, dtype=bool)
         rationales_mask[rationales[0], rationales[1]] = True
         
-        inst_rationale_removed['input_ids'] = torch.from_numpy(np.delete(inst_rationale_removed['input_ids'].numpy(), np.where(rationales_mask), axis=1))
+        # inst_rationale_removed['input_ids'] = torch.from_numpy(np.delete(inst_rationale_removed['input_ids'].numpy(), np.where(rationales_mask), axis=1))
+        inst_rationale_removed['input_ids'] = torch.from_numpy(np.where(rationales_mask, 1, inst_rationale_removed['input_ids'].numpy()))
+        
     else:
         rationales_mask = np.zeros(instances.shape, dtype=bool)
         
@@ -146,6 +148,7 @@ def remove_other_words(instances, rationales, join=True, tokenized=False):
         list(string) (join True) or list(list(string)) (join False) : list of instances with all non rationale words removed. Each instance is a list of words or a string.
     """
     inst_other_removed = copy.deepcopy(instances)
+    print("instance other removed typed: ", type(inst_other_removed))
     
     # TODO: add handling for tokenized data. This will involves masking and editing the inputs key in the dictionary rather than the whole input as it done for 
     # non tokenized inputs
@@ -153,7 +156,12 @@ def remove_other_words(instances, rationales, join=True, tokenized=False):
         inverse_rationales_mask = np.ones(instances['input_ids'].numpy().shape, dtype=bool)
         inverse_rationales_mask[rationales[0], rationales[1]] = False
         
-        inst_other_removed['input_ids'] = torch.from_numpy(np.delete(inst_other_removed['input_ids'].numpy(), np.where(inverse_rationales_mask), axis=1))
+        # inst_other_removed['input_ids'] = torch.from_numpy(np.delete(inst_other_removed['input_ids'].numpy(), np.where(inverse_rationales_mask), axis=1))
+        # as far as i can tell, 1 is the padding token
+        inst_other_removed['input_ids'] = torch.from_numpy(np.where(inverse_rationales_mask, 1, inst_other_removed['input_ids'].numpy()))
+        
+        # update the attention mask to match in size
+        inst_other_removed['attention_mask'] = torch.ones(inst_other_removed['input_ids'].size())
     else:
         # create version of index array where all indexes are added that are not in the rationalle
         inverse_rationales_mask = np.ones(instances.shape, dtype=bool)
@@ -167,10 +175,11 @@ def remove_other_words(instances, rationales, join=True, tokenized=False):
         if join:
             inst_other_removed = [''.join(inst_other_removed[i].tolist()) for i in range(len(inst_other_removed))]
         
+    print("instance other removed two typed: ", type(inst_other_removed))
     return inst_other_removed
 
 
-def calculate_comprehensiveness(predictions, instances_rationale_removed, model, tokenizer, predictor_func):
+def calculate_comprehensiveness(predictions, instances_rationale_removed, model, tokenizer, predictor_func, tokenized=False):
     """ Calculate the comprehensiveness of the rationales
 
     Args:
@@ -186,12 +195,27 @@ def calculate_comprehensiveness(predictions, instances_rationale_removed, model,
     torch.cuda.empty_cache()
     predictions_rationale_removed = None
     
-    for i in range(0, len(instances_rationale_removed), BATCH_SIZE):
-        end_range = i + BATCH_SIZE if i + BATCH_SIZE < len(instances_rationale_removed) else len(instances_rationale_removed)
-        
-        instances_batch = instances_rationale_removed[i:end_range]
-        output_batch = predictor_func(instances_batch, model, tokenizer)
-        
+    loop_end = -1
+    if tokenized:
+        loop_end = len(instances_rationale_removed['input_ids'])
+    else:
+        len(instances_rationale_removed)
+    
+    for i in range(0, loop_end, BATCH_SIZE):
+        end_range = i + BATCH_SIZE if i + BATCH_SIZE < loop_end else loop_end
+        output_batch = None
+        if tokenized:
+            instances_batch = copy.deepcopy(instances_rationale_removed)
+            instances_batch['input_ids'] = instances_batch['input_ids'][i:end_range]
+            instances_batch['attention_mask'] = torch.ones(instances_batch['input_ids'].size())
+            print(instances_batch)
+            print("instances batch size: ", instances_batch['input_ids'].size())
+            output_batch = predictor_func(instances_batch, model, tokenizer)
+        else:
+            instances_batch = instances_rationale_removed[i:end_range]
+            print("instances batch type: ", type(instances_batch))
+            output_batch = predictor_func(instances_batch, model, tokenizer)
+            
         if i == 0:
             predictions_rationale_removed = output_batch
         else:
@@ -212,7 +236,7 @@ def calculate_comprehensiveness(predictions, instances_rationale_removed, model,
     return np.mean(confidence_dif, axis=-1), confidence_dif
 
 
-def calculate_sufficency(predictions, instances_other_removed, model, tokenizer, predictor_func):
+def calculate_sufficency(predictions, instances_other_removed, model, tokenizer, predictor_func, tokenized=False):
     """Calculates the sufficiency of the rationales
 
     Args:
@@ -227,16 +251,28 @@ def calculate_sufficency(predictions, instances_other_removed, model, tokenizer,
     
     predictions_other_removed = None
     
-    for i in range(0, len(instances_other_removed), BATCH_SIZE):
-        end_range = i + BATCH_SIZE if i + BATCH_SIZE < len(instances_other_removed) else len(instances_other_removed)
+    loop_end = -1
+    if tokenized:
+        loop_end = len(instances_other_removed['input_ids'])
+    else:
+        len(instances_other_removed)
+    
+    
+    for i in range(0, loop_end, BATCH_SIZE):
+        end_range = i + BATCH_SIZE if i + BATCH_SIZE < loop_end else loop_end
         
-        # print("end range: ", end_range)
-        # print(i)
-        
-        instances_batch = instances_other_removed[i:end_range]
-        # print(len(instances_batch))
-
-        output_batch = predictor_func(instances_batch, model, tokenizer)
+        output_batch = None
+        if tokenized:
+            instances_batch = copy.deepcopy(instances_other_removed)
+            instances_batch['input_ids'] = instances_batch['input_ids'][i:end_range]
+            instances_batch['attention_mask'] = torch.ones(instances_batch['input_ids'].size())
+            print(instances_batch)
+            print("instances batch size: ", instances_batch['input_ids'].size())
+            output_batch = predictor_func(instances_batch, model, tokenizer)
+        else:
+            instances_batch = instances_other_removed[i:end_range]
+            print("instances batch type: ", type(instances_batch))
+            output_batch = predictor_func(instances_batch, model, tokenizer)
         
         if i == 0:
             predictions_other_removed = output_batch
@@ -260,7 +296,7 @@ def calculate_sufficency(predictions, instances_other_removed, model, tokenizer,
     return np.mean(confidence_dif, axis=-1), confidence_dif
     
     
-def calculate_faithfulness(instances, instances_rationalle_removed, instances_other_removed, model, tokenizer, predictor_func):
+def calculate_faithfulness(instances, instances_rationalle_removed, instances_other_removed, model, tokenizer, predictor_func, tokenized=False):
     """Calculate the faithfulness of the rationales
 
     Args:
@@ -272,14 +308,31 @@ def calculate_faithfulness(instances, instances_rationalle_removed, instances_ot
         predictor_func (function): The function to use to get the predictions from the model.
     """
     # generate predictions
-    redictions = None
-    for i in range(0, len(instances), BATCH_SIZE):
-        end_range = i + BATCH_SIZE if i + BATCH_SIZE < len(instances) else len(instances)
+    predictions = None
+    
+    loop_end = -1
+    if tokenized:
+        loop_end = len(instances['input_ids'])
+    else:
+        len(instances)
         
-        instances_batch = instances[i:end_range]
-        # print(len(instances_batch))
-        # print(instances_batch)
-        output_batch = predictor_func(instances_batch, model, tokenizer)
+    for i in range(0, loop_end, BATCH_SIZE):
+        end_range = i + BATCH_SIZE if i + BATCH_SIZE < loop_end else loop_end
+        
+        output_batch = None
+        if tokenized:
+            instances_batch = copy.deepcopy(instances)
+            print("batch type: ", type(instances_batch))
+            instances_batch['input_ids'] = instances_batch['input_ids'][i:end_range]
+            instances_batch['attention_mask'] = torch.ones(instances_batch['input_ids'].size())
+            print("batch type: ", type(instances_batch))
+            # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            # instances_batch.to(device)
+            output_batch = predictor_func(instances_batch, model, tokenizer)
+        else:
+            instances_batch = instances[i:end_range]
+            print("instances batch type: ", type(instances_batch))
+            output_batch = predictor_func(instances_batch, model, tokenizer)
         
         if i == 0:
             predictions = output_batch
@@ -295,8 +348,8 @@ def calculate_faithfulness(instances, instances_rationalle_removed, instances_ot
     for i, instance in enumerate(instances_rationalle_removed):
         print("Currently interpreting instance: ", i)
         
-        sufficency, suf_list = calculate_sufficency(predictions, instances_rationalle_removed[i], model, tokenizer, predictor_func)
-        comprehensiveness, comp_list = calculate_comprehensiveness(predictions, instances_other_removed[i], model, tokenizer, predictor_func)
+        sufficency, suf_list = calculate_sufficency(predictions, instances_rationalle_removed[i], model, tokenizer, predictor_func, tokenized)
+        comprehensiveness, comp_list = calculate_comprehensiveness(predictions, instances_other_removed[i], model, tokenizer, predictor_func, tokenized)
         
         # calculate faithfulness
         faithfulness = sufficency * comprehensiveness
