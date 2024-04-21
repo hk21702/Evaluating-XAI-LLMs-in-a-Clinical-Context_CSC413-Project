@@ -120,10 +120,10 @@ def predictor_model(texts, model, tokenizer):
 # from transformers import AutoTokenizer
 
 # get the lime evaluations of each instance
-import faithfulness
+import faithfulness_shap_utils
 # this reimports the library for easy testing in the notebook
 import importlib
-importlib.reload(faithfulness)
+importlib.reload(faithfulness_shap_utils)
 
 samples_start = 0
 samples_end = 3
@@ -134,7 +134,7 @@ instances = untokenized_dataset["train"][samples_start:samples_end]["text"]
 # print(instances)
 explainer = LimeTextExplainer(class_names=classes, bow=False)
 
-indexed_text, index_array_rationalle = faithfulness.lime_create_index_arrays(instances, predictor_opt, explainer)
+indexed_text, index_array_rationalle = faithfulness_shap_utils.lime_create_index_arrays(instances, predictor_opt, explainer)
 
 # faithfulness.save_indexed_strs(indexed_text,  index_array_rationalle, "test.npz")
 # indexed_text, index_array_rationalle = faithfulness.load_indexed_strs("test.npz")
@@ -143,8 +143,8 @@ indexed_text, index_array_rationalle = faithfulness.lime_create_index_arrays(ins
 # print(index_array_rationalle)
 
 # # remove the rationale words
-rationalle_removed = faithfulness.remove_rationale_words(indexed_text, index_array_rationalle)
-others_removed = faithfulness.remove_other_words(indexed_text, index_array_rationalle)
+rationalle_removed = faithfulness_shap_utils.remove_rationale_words(indexed_text, index_array_rationalle)
+others_removed = faithfulness_shap_utils.remove_other_words(indexed_text, index_array_rationalle)
 
 # rationalle_removed = rationalle_removed + rationalle_removed + rationalle_removed + rationalle_removed + rationalle_removed
 # others_removed = others_removed + others_removed + others_removed + others_removed + others_removed 
@@ -157,6 +157,6 @@ others_removed = faithfulness.remove_other_words(indexed_text, index_array_ratio
 
 # the extra list is needed since the function expects a list of instances each coming from a different interpretability method
 # testing multi input by duplicating the arrays, don't actually do this
-ind, faith = faithfulness.calculate_faithfulness(instances, [rationalle_removed, rationalle_removed], [others_removed, others_removed], model, tokenizer, predictor_model)
+ind, faith = faithfulness_shap_utils.calculate_faithfulness(instances, [rationalle_removed, rationalle_removed], [others_removed, others_removed], model, tokenizer, predictor_model)
 # print(ind)
 # print(faith)
