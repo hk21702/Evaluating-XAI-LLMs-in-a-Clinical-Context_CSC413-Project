@@ -185,7 +185,6 @@ def calculate_comprehensiveness(predictions, instances_rationale_removed, model,
     # pass the instances through the model - get the predictions
     torch.cuda.empty_cache()
     predictions_rationale_removed = None
-    print(instances_rationale_removed)
     for i in range(0, len(instances_rationale_removed), BATCH_SIZE):
         end_range = i + BATCH_SIZE if i + BATCH_SIZE < len(instances_rationale_removed) else len(instances_rationale_removed)
         
@@ -234,8 +233,6 @@ def calculate_sufficency(predictions, instances_other_removed, model, tokenizer,
         # print(i)
         
         instances_batch = instances_other_removed[i:end_range]
-        # print(len(instances_batch))
-        print(instances_batch)
         output_batch = predictor_func(instances_batch, model, tokenizer)
         
         if i == 0:
@@ -293,10 +290,6 @@ def calculate_faithfulness(instances, instances_rationalle_removed, instances_ot
 
     sufficency, suf_list = calculate_sufficency(predictions, instances_rationalle_removed, model, tokenizer, predictor_func)
     comprehensiveness, comp_list = calculate_comprehensiveness(predictions, instances_other_removed, model, tokenizer, predictor_func)
-    
-    print('sufficiency:',sufficency)
-    
-    print('comprehensiveness:',comprehensiveness)
         
     # calculate faithfulness
     faithfulness = sufficency * comprehensiveness
@@ -306,10 +299,13 @@ def calculate_faithfulness(instances, instances_rationalle_removed, instances_ot
     print()
     
     print()
-    print("Faithfulness for iteration: ", faithfulness)
-    print("Comprehensiveness for iteration: ", comprehensiveness)
-    print("Sufficency for iteration: ", sufficency)
+    print("Faithfulness: ", faithfulness)
+    print("Comprehensiveness: ", comprehensiveness)
+    print("Sufficency: ", sufficency)
     print()
+
+    print('Sufficiency list:', suf_list)
+    print('Comprehensiveness list:', comp_list)
     
     print()
     print("Comprehensiveness Median: ", np.median(comp_list, axis=-1))
@@ -324,41 +320,6 @@ def calculate_faithfulness(instances, instances_rationalle_removed, instances_ot
     print()
     
     faithfulness_calc.append(faithfulness)
-    
-    # # for each method, calculate the sufficency and comprehensiveness
-    # for i, instance in enumerate(instances_rationalle_removed):
-    #     print("Currently interpreting instance: ", i)
-    #     print(len(instances_rationalle_removed[i][0]))
-    #     sufficency, suf_list = calculate_sufficency(predictions, instances_rationalle_removed[i], model, tokenizer, predictor_func)
-    #     comprehensiveness, comp_list = calculate_comprehensiveness(predictions, instances_other_removed[i], model, tokenizer, predictor_func)
-        
-    #     # calculate faithfulness
-    #     faithfulness = sufficency * comprehensiveness
-        
-    #     print()
-    #     print('-- Metrics -------------------------------------------------------------')
-    #     print()
-        
-    #     print()
-    #     print("Faithfulness for iteration: ", faithfulness)
-    #     print("Comprehensiveness for iteration: ", comprehensiveness)
-    #     print("Sufficency for iteration: ", sufficency)
-    #     print()
-        
-    #     print()
-    #     print("Comprehensiveness Median: ", np.median(comp_list, axis=-1))
-    #     print("Comprehensiveness q1 (25% percentile): ", np.quantile(comp_list, 0.25, axis=-1))
-    #     print("Comprehensiveness q3 (75% percentile): ", np.quantile(comp_list, 0.75, axis=-1))
-    #     print()
-        
-    #     print()
-    #     print("Sufficency Median: ", np.median(suf_list, axis=-1))
-    #     print("Sufficency q1 (25% percentile): ", np.quantile(suf_list, 0.25, axis=-1))
-    #     print("Sufficency q3 (75% percentile): ", np.quantile(suf_list, 0.75, axis=-1))
-    #     print()
-        
-    #     faithfulness_calc.append(faithfulness)
-
     # return the minimum index of the faithfulness_calc to get the best method
     return np.argmin(faithfulness_calc), faithfulness_calc
         
