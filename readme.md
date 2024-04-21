@@ -24,5 +24,5 @@ Our project focuses on assessing and improving local interpretability method of 
 ## Running explain_bert.ipynb
 
 1. Download model weights [best_model_state.bin](https://drive.google.com/drive/folders/1a7MW1GxHa8tzSiYX_4hgAZ5jvma3Ix-L?usp=drive_link)
-2. Ensure that the preprocessed outputs are correctly named. If preprocessing step unavailable, see here for preprocessed [datasets](https://drive.google.com/drive/folders/1a7MW1GxHa8tzSiYX_4hgAZ5jvma3Ix-L?usp=drive_link) necessary to run the notebook.
+2. Ensure that the preprocessed outputs are correctly named.
 3. Run the notebook.
