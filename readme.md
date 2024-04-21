@@ -21,6 +21,19 @@ Our project focuses on assessing and improving local interpretability method of 
   - Next, pass the formatted text instances and the indices to the remove_rationalle_words and remove_other_words functions. These will return the strings with related rationalle words (or all non rationalle words) removed.
   - Finally, the instances along with the returned arrays from the previous step can be passed to the faithfulness function. Note that remove_rationalle_words and remove_other_words arrays are expected to be in a larger array containing the explanations from all XAI functions
 
+
+## Faithfulness File Naming:
+
+- faithfulness_calculation_lime_old.ipynb - An old faithfulness file, kept for debugging purposes
+- faithfulness_calculation_lime_notebook.ipynb - The notebook based faithfulness calculation for LIME and OPT. Uses faithfulness_lime_utils.py
+- faithfulness_calculation_lime_script.py - This is the same as the jupyter notebook "faithfulness_calculation_lime_notebook.ipynb". This was created since jupyter notebooks occasionally have issues deallocating gpu memory. Use the job_faithfulness.sh script to run this file.
+- shap_faithfulness_calculation.ipynb - File used to calculate faithfulness for SHAP.
+- faithfulness_lime_utils.py - Utility file holding faithfulness calculation functions. Used for LIME.
+- faithfulness_shap_utils.py - Utility file holding faithfulness calculation functions. Used for SHAP.
+
+
+
+
 ## Running explain_bert.ipynb
 
 1. Download model weights [best_model_state.bin](https://drive.google.com/drive/folders/1a7MW1GxHa8tzSiYX_4hgAZ5jvma3Ix-L?usp=drive_link)
